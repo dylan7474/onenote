@@ -83,6 +83,9 @@
         .grid-cell.active { background-color: #c084fc; border-color: #7719aa; }
         .dark .grid-cell { border-color: #475569; }
         .dark .grid-cell.active { background-color: #9333ea; border-color: #c084fc; }
+        .app-menu-panel { min-width: 14rem; }
+        .app-menu-item[aria-checked="true"] .menu-check { opacity: 1; }
+        .horizontal-section-tab { border-top: 3px solid var(--section-color, #8b5cf6); }
     </style>
 </head>
 <body class="h-full bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-100 flex flex-col overflow-hidden antialiased">
@@ -148,11 +151,28 @@
         </div>
     </header>
 
+    <!-- OneNote-style application menus -->
+    <nav id="appMenuBar" class="h-10 shrink-0 bg-white dark:bg-slate-850 border-b border-slate-200 dark:border-slate-700 flex items-stretch px-3 select-none z-30" aria-label="OneNote menu tabs">
+        <div class="relative"><button class="app-menu-trigger h-full px-3 text-sm hover:bg-slate-100 dark:hover:bg-slate-800" onclick="toggleAppMenu('fileMenu', event)">File</button><div id="fileMenu" class="app-menu-panel hidden absolute top-full left-0 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-b-lg shadow-xl p-1.5 text-sm z-50"><button onclick="closeAppMenus(); promptCreateNotebook()" class="w-full flex gap-2 items-center px-3 py-2 rounded hover:bg-slate-100 dark:hover:bg-slate-700"><i data-lucide="book-plus" class="w-4 h-4"></i>New notebook</button><button onclick="closeAppMenus(); openImportModal()" class="w-full flex gap-2 items-center px-3 py-2 rounded hover:bg-slate-100 dark:hover:bg-slate-700"><i data-lucide="file-input" class="w-4 h-4"></i>Import</button><button onclick="closeAppMenus(); exportCurrentNotebook()" class="w-full flex gap-2 items-center px-3 py-2 rounded hover:bg-slate-100 dark:hover:bg-slate-700"><i data-lucide="download" class="w-4 h-4"></i>Export notebook</button></div></div>
+        <button class="h-full px-3 text-sm font-medium border-b-2 border-onenote-600 text-onenote-700 dark:text-purple-300" onclick="closeAppMenus(); document.getElementById('editorRibbon').scrollIntoView()">Home</button>
+        <div class="relative"><button class="app-menu-trigger h-full px-3 text-sm hover:bg-slate-100 dark:hover:bg-slate-800" onclick="toggleAppMenu('insertMenu', event)">Insert</button><div id="insertMenu" class="app-menu-panel hidden absolute top-full left-0 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-b-lg shadow-xl p-1.5 text-sm z-50"><button onclick="closeAppMenus(); addNewPage()" class="w-full flex gap-2 items-center px-3 py-2 rounded hover:bg-slate-100 dark:hover:bg-slate-700"><i data-lucide="file-plus" class="w-4 h-4"></i>New page</button><button onclick="closeAppMenus(); insertCheckbox()" class="w-full flex gap-2 items-center px-3 py-2 rounded hover:bg-slate-100 dark:hover:bg-slate-700"><i data-lucide="list-checks" class="w-4 h-4"></i>To-do item</button></div></div>
+        <button class="h-full px-3 text-sm hover:bg-slate-100 dark:hover:bg-slate-800" onclick="closeAppMenus(); toggleDrawMode()">Draw</button>
+        <button class="h-full px-3 text-sm hover:bg-slate-100 dark:hover:bg-slate-800" onclick="closeAppMenus(); showToast('Page history is preserved when your notes are saved.')">History</button>
+        <button class="h-full px-3 text-sm hover:bg-slate-100 dark:hover:bg-slate-800" onclick="closeAppMenus(); showToast('Review your page tags from the Home ribbon.')">Review</button>
+        <div class="relative"><button id="viewMenuButton" class="app-menu-trigger h-full px-3 text-sm hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-1" onclick="toggleAppMenu('viewMenu', event)" aria-haspopup="true" aria-expanded="false">View<i data-lucide="chevron-down" class="w-3 h-3"></i></button><div id="viewMenu" class="app-menu-panel hidden absolute top-full left-0 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-b-lg shadow-xl p-2 text-sm z-50" role="menu"><div class="px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Sections layout</div><button id="verticalSectionsOption" role="menuitemradio" class="app-menu-item w-full flex gap-2 items-center px-3 py-2 rounded hover:bg-slate-100 dark:hover:bg-slate-700" onclick="setSectionLayout('vertical')"><i class="menu-check w-4 text-onenote-600" data-lucide="check"></i><i data-lucide="panel-left" class="w-4 h-4"></i><span>Vertical sections</span></button><button id="horizontalSectionsOption" role="menuitemradio" class="app-menu-item w-full flex gap-2 items-center px-3 py-2 rounded hover:bg-slate-100 dark:hover:bg-slate-700" onclick="setSectionLayout('horizontal')"><i class="menu-check w-4 text-onenote-600" data-lucide="check"></i><i data-lucide="panel-top" class="w-4 h-4"></i><span>Horizontal sections</span></button><div class="border-t border-slate-200 dark:border-slate-700 my-1"></div><button onclick="closeAppMenus(); toggleDarkMode()" class="w-full flex gap-2 items-center px-3 py-2 rounded hover:bg-slate-100 dark:hover:bg-slate-700"><i data-lucide="moon" class="w-4 h-4"></i>Switch theme</button></div></div>
+        <button class="h-full px-3 text-sm hover:bg-slate-100 dark:hover:bg-slate-800" onclick="closeAppMenus(); showToast('Tip: choose View to change the sections layout.')">Help</button>
+    </nav>
+
+    <div id="horizontalSections" class="hidden h-12 shrink-0 bg-slate-100 dark:bg-slate-800 border-b border-slate-300 dark:border-slate-700 items-stretch px-3 overflow-x-auto" aria-label="Sections">
+        <div id="horizontalSectionList" class="flex items-stretch gap-1"></div>
+        <button onclick="promptCreateSection()" class="shrink-0 px-3 text-slate-500 hover:text-onenote-700 hover:bg-slate-200 dark:hover:bg-slate-700" title="Add Section"><i data-lucide="plus" class="w-4 h-4"></i></button>
+    </div>
+
     <!-- Main Three-Column Workspace Layout -->
     <div class="flex-1 flex overflow-hidden relative">
 
         <!-- Column 1: Sections Navigation Sidebar -->
-        <aside class="w-52 bg-slate-200/80 dark:bg-slate-800/90 border-r border-slate-300 dark:border-slate-700 flex flex-col shrink-0">
+        <aside id="verticalSections" class="w-52 bg-slate-200/80 dark:bg-slate-800/90 border-r border-slate-300 dark:border-slate-700 flex flex-col shrink-0">
             <div class="p-3 flex items-center justify-between border-b border-slate-300 dark:border-slate-700">
                 <span class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Sections</span>
                 <button onclick="promptCreateSection()" class="p-1 hover:bg-slate-300 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300 transition" title="Add Section">
@@ -408,7 +428,8 @@
             activeSectionId: null,
             activePageId: null,
             isDrawMode: false,
-            darkMode: false
+            darkMode: false,
+            sectionLayout: 'vertical'
         };
 
         // Canvas Ink Drawing State
@@ -586,6 +607,7 @@
             renderSections();
             renderPages();
             renderActivePage();
+            applySectionLayout();
             lucide.createIcons();
         }
 
@@ -644,8 +666,10 @@
         function renderSections() {
             const nb = getActiveNotebook();
             const container = document.getElementById('sectionList');
+            const horizontalContainer = document.getElementById('horizontalSectionList');
             if (!nb || !nb.sections) {
                 container.innerHTML = `<div class="text-xs text-slate-400 p-2">No sections</div>`;
+                horizontalContainer.innerHTML = '';
                 return;
             }
 
@@ -660,6 +684,48 @@
                     </button>
                 </div>
             `).join('');
+
+            horizontalContainer.innerHTML = nb.sections.map(sec => `
+                <button onclick="selectSection('${sec.id}')" class="horizontal-section-tab group shrink-0 flex items-center gap-2 px-4 text-sm transition ${sec.id === state.activeSectionId ? 'bg-white dark:bg-slate-700 text-onenote-700 dark:text-purple-300 font-semibold' : 'text-slate-600 dark:text-slate-300 hover:bg-white/70 dark:hover:bg-slate-700/60'}" style="--section-color: ${sec.color || '#8b5cf6'}">
+                    <span>${escapeHtml(sec.name)}</span>
+                    <span onclick="event.stopPropagation(); deleteSection('${sec.id}')" class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500" aria-label="Delete ${escapeHtml(sec.name)}">&times;</span>
+                </button>
+            `).join('');
+        }
+
+        function toggleAppMenu(menuId, event) {
+            event.stopPropagation();
+            const target = document.getElementById(menuId);
+            const wasHidden = target.classList.contains('hidden');
+            closeAppMenus();
+            if (wasHidden) target.classList.remove('hidden');
+            const viewButton = document.getElementById('viewMenuButton');
+            if (viewButton) viewButton.setAttribute('aria-expanded', menuId === 'viewMenu' && wasHidden ? 'true' : 'false');
+        }
+
+        function closeAppMenus() {
+            document.querySelectorAll('.app-menu-panel').forEach(menu => menu.classList.add('hidden'));
+            const viewButton = document.getElementById('viewMenuButton');
+            if (viewButton) viewButton.setAttribute('aria-expanded', 'false');
+        }
+
+        function setSectionLayout(layout) {
+            state.sectionLayout = layout === 'horizontal' ? 'horizontal' : 'vertical';
+            applySectionLayout();
+            closeAppMenus();
+            saveStateToStorage();
+            showToast(`Sections are now shown ${state.sectionLayout}ly.`);
+        }
+
+        function applySectionLayout() {
+            const horizontal = state.sectionLayout === 'horizontal';
+            document.getElementById('verticalSections').classList.toggle('hidden', horizontal);
+            document.getElementById('horizontalSections').classList.toggle('hidden', !horizontal);
+            document.getElementById('horizontalSections').classList.toggle('flex', horizontal);
+            document.getElementById('verticalSectionsOption').setAttribute('aria-checked', String(!horizontal));
+            document.getElementById('horizontalSectionsOption').setAttribute('aria-checked', String(horizontal));
+            document.querySelector('#verticalSectionsOption .menu-check').classList.toggle('opacity-0', horizontal);
+            document.querySelector('#horizontalSectionsOption .menu-check').classList.toggle('opacity-0', !horizontal);
         }
 
         function selectSection(id) {
@@ -1033,6 +1099,7 @@
         function setupTableEventListeners() {
             // Close Table menu on outside click
             document.addEventListener('click', (e) => {
+                if (!e.target.closest('#appMenuBar')) closeAppMenus();
                 const menu = document.getElementById('tableDropdownMenu');
                 if (menu && !menu.contains(e.target) && !e.target.closest('button[title="Table Tools"]')) {
                     menu.classList.add('hidden');
