@@ -50,14 +50,28 @@ DOCKER_EOF
 echo "Building Docker image..."
 docker build -t "${IMAGE_NAME}" "${BUILD_DIR}"
 
+if { [ -n "${MS_CLIENT_ID:-}" ] && [ -z "${MS_CLIENT_SECRET:-}" ]; } || \
+   { [ -z "${MS_CLIENT_ID:-}" ] && [ -n "${MS_CLIENT_SECRET:-}" ]; }; then
+  echo "Error: MS_CLIENT_ID and MS_CLIENT_SECRET must either both be set or both be omitted."
+  exit 1
+fi
+
 echo "Stopping existing container (if any)..."
 docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
 
 echo "Starting container..."
+MICROSOFT_ENV_ARGS=()
+for variable in MS_CLIENT_ID MS_CLIENT_SECRET MS_TENANT_ID MS_REDIRECT_URI; do
+  if [ -n "${!variable:-}" ]; then
+    MICROSOFT_ENV_ARGS+=(--env "${variable}")
+  fi
+done
+
 docker run -d \
   --name "${CONTAINER_NAME}" \
   -p "${PORT_ARG}:${PORT_ARG}" \
   -e "PORT=${PORT_ARG}" \
+  "${MICROSOFT_ENV_ARGS[@]}" \
   -v "onenote-data:/data" \
   --restart unless-stopped \
   "${IMAGE_NAME}" >/dev/null
@@ -66,4 +80,9 @@ echo "========================================="
 echo "Deployed ${PROJECT_NAME}."
 echo "URL: http://localhost:${PORT_ARG}/"
 echo "App file: http://localhost:${PORT_ARG}/index.html"
+if [ -n "${MS_CLIENT_ID:-}" ]; then
+  echo "Microsoft import: configured (callback: ${MS_REDIRECT_URI:-http://localhost:${PORT_ARG}/api/microsoft/callback})"
+else
+  echo "Microsoft import: disabled (set MS_CLIENT_ID and MS_CLIENT_SECRET before running deploy.sh)"
+fi
 echo "========================================="

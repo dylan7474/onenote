@@ -72,6 +72,25 @@ referenced payload stored in the ZIP alongside the HTML page. Native `.one` and
 ./deploy.sh 3020
 ```
 
+`deploy.sh` passes Microsoft configuration from its environment into the
+container. To enable direct import in Docker, supply the Entra application
+credentials when deploying (the client ID and secret must be provided together):
+
+```bash
+MS_CLIENT_ID="your-application-id" \
+MS_CLIENT_SECRET="your-client-secret" \
+MS_TENANT_ID="common" \
+MS_REDIRECT_URI="https://notes.example.com/api/microsoft/callback" \
+./deploy.sh 3020
+```
+
+If those variables are omitted, the notebook application still works, but the
+Microsoft import panel reports exactly which server settings are missing. After
+changing credentials, rerun `deploy.sh` so the container is recreated with the
+new environment. The redirect URI must exactly match a **Web** redirect URI in
+the Entra app registration; for local use it defaults to
+`http://localhost:<port>/api/microsoft/callback`.
+
 The deployment stores application state in the `onenote-data` Docker volume, so
 rebuilding or replacing the application container does not delete saved notes.
 
