@@ -47,6 +47,11 @@ specific legacy desktop release.
   Question, and Idea page tags.
 - Multiple editable note containers with headings, bold, italic, underline,
   strikethrough, font color, highlighting, bullets, numbering, and checkboxes.
+- Inline file attachments via the Insert menu, editor toolbar, or drag and drop.
+  Files are inserted at the text caret, persist with the page, and can be
+  downloaded/launched in place (up to 10 MiB each and 30 MiB per page). OneNote
+  HTML `<object data-attachment>` elements are retained at their original body
+  position when their payload is embedded or present in an imported ZIP.
 - Table insertion (up to 6 × 5 from the picker), row/column editing, cell
   shading, keyboard navigation, and table deletion.
 - A pen layer with selectable color and width, saved with the page.
@@ -69,7 +74,7 @@ implementation exists; **Missing** = no implementation yet.
 | Tags and tasks | **Partial** | Three page-level labels and inline checkboxes exist. OneNote applies built-in/custom tags to individual content and can summarize/find tags; add that model plus Outlook task integration where supported. |
 | Search | **Partial** | The “global” search currently filters only titles/tags in the active section. Add indexed full-text and OCR search across all notebooks, result snippets, scopes, filters, recent searches, and tag search. |
 | Ink and Draw | **Partial** | One bitmap pen layer exists. Add stroke/vector storage, eraser/lasso, selection/transform, highlighters, pressure/touch support, shapes, ruler, ink replay, and ink-to-shape/text/math. |
-| Insert content | **Missing** | Add images, camera/scans, links, file attachments/printouts, audio/video recordings, online video, date/time, equations/symbols, stickers, and reusable page templates. |
+| Insert content | **Partial** | File attachments can be added at the caret, persisted, and downloaded/launched; OneNote HTML attachment objects retain their body position on import. Add inline images, attachment printouts/previews, camera/scans, links, audio/video recordings, online video, date/time, equations/symbols, stickers, and reusable page templates. |
 | Capture and integrations | **Missing** | Add a web clipper/share target, email-to-note workflow, meeting details, Outlook tasks, and optional Microsoft Graph interoperability. |
 | Collaboration and sync | **Missing** | State is one server-wide JSON document. Add accounts, private notebooks, invitations/links, permissions, real-time coauthoring, presence, comments/@mentions, conflict handling, offline cache, and multi-device sync. |
 | History and recovery | **Missing** | The History menu is informational only. Add undo/redo across editing, autosaved revisions, page versions/diff/restore, author attribution, recent edits, deleted-notes recycle bin, and backup/restore. |
