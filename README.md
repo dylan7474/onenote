@@ -71,8 +71,9 @@ specific legacy desktop release.
   downloaded/launched in place (up to 10 MiB each and 30 MiB per page). OneNote
   HTML `<object data-attachment>` elements are retained at their original body
   position when their payload is embedded or present in an imported ZIP.
-- Table insertion (up to 6 × 5 from the picker), row/column editing, cell
-  shading, keyboard navigation, and table deletion.
+- Table insertion (up to 6 × 6 from the picker), row/column editing, rectangular
+  multi-cell selection, merge/split, drag resizing, even distribution, sorting,
+  header and banded-row styles, cell shading, keyboard navigation, and deletion.
 - A pen layer with selectable color and width, saved with the page.
 - JSON notebook export; JSON, HTML/HTM, and ZIP-of-HTML import, preserving
   supported OneNote subpage levels from JSON metadata and ZIP folders.
@@ -89,7 +90,7 @@ implementation exists; **Missing** = no implementation yet.
 | Notebooks, sections, pages | **Available** | Core hierarchy, two-level page nesting, hierarchy-aware import, and collapsing/expanding subpage groups exist. Add section groups, reorder/move/copy, rename, colors, recycle bins, and closed-notebook management. |
 | Free-form page canvas | **Partial** | Notes can contain multiple blocks and ink, but blocks are vertically stacked. Add true click-anywhere positioning, drag/resize, z-order, canvas zoom, and paper size/background/rule-line controls. |
 | Rich text and lists | **Partial** | Basic formatting, headings, lists, highlighting, and checkboxes exist. Add font family/size, styles, indentation, alignment, line spacing, clear formatting, format painter, symbols, equations, code formatting, and robust paste. |
-| Tables | **Partial** | Basic table creation and editing exists. Add resize, selection, merge/split, distribute, sort, header/banding styles, conversion to/from text, and accessible keyboard operations. |
+| Tables | **Partial** | Creation, resizing, Shift-click rectangular selection, merge/split, distribution, sorting, headers, banding, shading, row/column operations, and Tab/Shift+Tab navigation exist. Remaining OneNote gaps include nested/irregular merge edge cases, conversion to/from text or Excel, formulas, advanced style galleries, repeated headers, and a complete assistive-technology/browser test matrix. |
 | Tags and tasks | **Partial** | Three page-level labels and inline checkboxes exist. OneNote applies built-in/custom tags to individual content and can summarize/find tags; add that model plus Outlook task integration where supported. |
 | Search | **Partial** | The “global” search currently filters only titles/tags in the active section. Add indexed full-text and OCR search across all notebooks, result snippets, scopes, filters, recent searches, and tag search. |
 | Ink and Draw | **Partial** | One bitmap pen layer exists. Add stroke/vector storage, eraser/lasso, selection/transform, highlighters, pressure/touch support, shapes, ruler, ink replay, and ink-to-shape/text/math. |

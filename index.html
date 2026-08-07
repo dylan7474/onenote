@@ -69,7 +69,7 @@
         .editable-content ul { list-style-type: disc; padding-left: 1.25rem; margin-bottom: 0.5rem; }
         .editable-content ol { list-style-type: decimal; padding-left: 1.25rem; margin-bottom: 0.5rem; }
         .editable-content blockquote { border-left: 3px solid #7719aa; padding-left: 0.75rem; color: #4b5563; font-style: italic; }
-        .editable-content table { border-collapse: collapse; width: 100%; margin: 0.75rem 0; min-width: 250px; }
+        .editable-content table { border-collapse: collapse; width: 100%; margin: 0.75rem 0; min-width: 250px; table-layout: fixed; }
         .editable-content table, .editable-content th, .editable-content td { border: 1px solid #cbd5e1; padding: 8px 12px; position: relative; }
         .dark .editable-content table, .dark .editable-content th, .dark .editable-content td { border-color: #475569; }
         .editable-content th { background-color: #f1f5f9; font-weight: 600; text-align: left; }
@@ -77,6 +77,11 @@
         .editable-content td:focus, .editable-content th:focus { outline: 2px solid #7719aa; outline-offset: -2px; }
         .editable-content tr:hover td { background-color: rgba(119, 25, 170, 0.02); }
         .dark .editable-content tr:hover td { background-color: rgba(168, 85, 247, 0.05); }
+        .editable-content table.table-banded tbody tr:nth-child(even) > * { background-color: rgba(119, 25, 170, 0.07); }
+        .dark .editable-content table.table-banded tbody tr:nth-child(even) > * { background-color: rgba(192, 132, 252, 0.09); }
+        .editable-content td.table-cell-selected, .editable-content th.table-cell-selected { box-shadow: inset 0 0 0 2px #7719aa; background-color: rgba(192, 132, 252, 0.18) !important; }
+        .editable-content table.table-borderless, .editable-content table.table-borderless > * > tr > * { border-color: transparent; }
+        .editable-content .table-column-resizer { position: absolute; top: 0; right: -4px; bottom: 0; width: 8px; cursor: col-resize; z-index: 2; }
         
         /* Interactive Table Grid Matrix Selector */
         .grid-cell { width: 20px; height: 20px; border: 1px solid #cbd5e1; border-radius: 2px; cursor: pointer; transition: background 0.15s, border-color 0.15s; }
@@ -399,6 +404,13 @@
                     <button onclick="addTableColumn('left')" class="p-1.5 hover:bg-white/20 rounded" title="Insert Column Left"><i data-lucide="arrow-left" class="w-3.5 h-3.5"></i></button>
                     <button onclick="addTableColumn('right')" class="p-1.5 hover:bg-white/20 rounded" title="Insert Column Right"><i data-lucide="arrow-right" class="w-3.5 h-3.5"></i></button>
                     <div class="h-4 w-px bg-white/20 mx-0.5"></div>
+                    <button onclick="mergeSelectedCells()" class="p-1.5 hover:bg-white/20 rounded" title="Merge selected cells"><i data-lucide="combine" class="w-3.5 h-3.5"></i></button>
+                    <button onclick="splitActiveCell()" class="p-1.5 hover:bg-white/20 rounded" title="Split merged cell"><i data-lucide="split" class="w-3.5 h-3.5"></i></button>
+                    <button onclick="distributeTableColumns()" class="p-1.5 hover:bg-white/20 rounded" title="Distribute columns evenly"><i data-lucide="columns-3" class="w-3.5 h-3.5"></i></button>
+                    <button onclick="sortTableByActiveColumn()" class="p-1.5 hover:bg-white/20 rounded" title="Sort by this column"><i data-lucide="arrow-down-a-z" class="w-3.5 h-3.5"></i></button>
+                    <button onclick="toggleTableHeader()" class="p-1.5 hover:bg-white/20 rounded" title="Toggle header row"><i data-lucide="heading" class="w-3.5 h-3.5"></i></button>
+                    <button onclick="toggleTableBanding()" class="p-1.5 hover:bg-white/20 rounded" title="Toggle banded rows"><i data-lucide="rows-3" class="w-3.5 h-3.5"></i></button>
+                    <div class="h-4 w-px bg-white/20 mx-0.5"></div>
                     <!-- Cell Shading Color Picker -->
                     <label class="p-1.5 hover:bg-white/20 rounded cursor-pointer flex items-center space-x-1" title="Cell Shading / Background">
                         <i data-lucide="paint-bucket" class="w-3.5 h-3.5 text-amber-300"></i>
@@ -482,6 +494,10 @@
 
         // Active Table Focus Tracking
         let currentActiveCell = null;
+        let tableSelectionAnchor = null;
+        let selectedTableCells = [];
+        let tableSortAscending = true;
+        let tableInsertionRange = null;
 
         const STATE_API_URL = '/api/state';
         const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
@@ -1393,6 +1409,10 @@
 
         function toggleTableMenu(e) {
             e.stopPropagation();
+            const selection = window.getSelection();
+            if (selection?.rangeCount && selection.anchorNode?.parentElement?.closest('.editable-content')) {
+                tableInsertionRange = selection.getRangeAt(0).cloneRange();
+            }
             const menu = document.getElementById('tableDropdownMenu');
             menu.classList.toggle('hidden');
         }
@@ -1418,22 +1438,27 @@
         }
 
         function insertTableGrid(rows, cols) {
-            let tableHtml = `<table class="onenote-table"><thead><tr>`;
+            if (!tableInsertionRange) return showToast('Place the caret in a note before inserting a table');
+            let tableHtml = `<table class="onenote-table" aria-label="Note table"><thead><tr>`;
             for (let c = 1; c <= cols; c++) {
-                tableHtml += `<th>Header ${c}</th>`;
+                tableHtml += `<th scope="col"><br></th>`;
             }
             tableHtml += `</tr></thead><tbody>`;
 
             for (let r = 1; r <= rows; r++) {
                 tableHtml += `<tr>`;
                 for (let c = 1; c <= cols; c++) {
-                    tableHtml += `<td>Data ${r}-${c}</td>`;
+                    tableHtml += `<td><br></td>`;
                 }
                 tableHtml += `</tr>`;
             }
             tableHtml += `</tbody></table><br>`;
 
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(tableInsertionRange);
             document.execCommand('insertHTML', false, tableHtml);
+            tableInsertionRange = null;
             document.getElementById('tableDropdownMenu').classList.add('hidden');
             showToast(`Inserted ${rows}x${cols} Table`);
         }
@@ -1453,6 +1478,67 @@
             document.addEventListener('selectionchange', handleTableSelection);
             
             document.getElementById('pageWorkspace').addEventListener('keydown', handleTableKeyDown);
+            document.getElementById('pageWorkspace').addEventListener('click', handleTableCellClick);
+            document.getElementById('pageWorkspace').addEventListener('pointerdown', beginTableColumnResize);
+        }
+
+        function handleTableCellClick(e) {
+            const cell = e.target.closest('td, th');
+            if (!cell) return;
+            currentActiveCell = cell;
+            if (!e.shiftKey || !tableSelectionAnchor || tableSelectionAnchor.closest('table') !== cell.closest('table')) {
+                tableSelectionAnchor = cell;
+                setSelectedTableCells([cell]);
+                return;
+            }
+            const table = cell.closest('table');
+            const startRow = tableSelectionAnchor.parentElement.rowIndex;
+            const endRow = cell.parentElement.rowIndex;
+            const startCol = tableSelectionAnchor.cellIndex;
+            const endCol = cell.cellIndex;
+            const cells = [];
+            for (let row = Math.min(startRow, endRow); row <= Math.max(startRow, endRow); row++) {
+                for (let col = Math.min(startCol, endCol); col <= Math.max(startCol, endCol); col++) {
+                    if (table.rows[row]?.cells[col]) cells.push(table.rows[row].cells[col]);
+                }
+            }
+            setSelectedTableCells(cells);
+        }
+
+        function setSelectedTableCells(cells) {
+            selectedTableCells.forEach(cell => cell.classList.remove('table-cell-selected'));
+            selectedTableCells = cells;
+            selectedTableCells.forEach(cell => cell.classList.add('table-cell-selected'));
+        }
+
+        function commitTableChange(table, message) {
+            const editor = table?.closest('.editable-content');
+            const block = editor?.closest('.note-block');
+            if (editor && block) saveBlockContent(block.id, editor);
+            if (message) showToast(message);
+        }
+
+        function beginTableColumnResize(e) {
+            const cell = e.target.closest('td, th');
+            if (!cell || cell.getBoundingClientRect().right - e.clientX > 7) return;
+            e.preventDefault();
+            const table = cell.closest('table');
+            const startX = e.clientX;
+            const startWidth = cell.getBoundingClientRect().width;
+            const col = cell.cellIndex;
+            const move = event => {
+                const width = Math.max(40, startWidth + event.clientX - startX);
+                Array.from(table.rows).forEach(row => {
+                    if (row.cells[col]) row.cells[col].style.width = `${width}px`;
+                });
+            };
+            const up = () => {
+                document.removeEventListener('pointermove', move);
+                document.removeEventListener('pointerup', up);
+                commitTableChange(table, 'Column resized');
+            };
+            document.addEventListener('pointermove', move);
+            document.addEventListener('pointerup', up);
         }
 
         function handleTableSelection() {
@@ -1629,8 +1715,107 @@
 
         function applyCellShading(color) {
             if (!currentActiveCell) return;
-            currentActiveCell.style.backgroundColor = color;
-            showToast('Cell shaded');
+            const cells = selectedTableCells.length ? selectedTableCells : [currentActiveCell];
+            cells.forEach(cell => cell.style.backgroundColor = color);
+            commitTableChange(currentActiveCell.closest('table'), `${cells.length} cell${cells.length === 1 ? '' : 's'} shaded`);
+        }
+
+        function mergeSelectedCells() {
+            const cells = selectedTableCells;
+            if (cells.length < 2) return showToast('Shift-click across adjacent cells to select them');
+            const table = cells[0].closest('table');
+            if (cells.some(cell => cell.closest('table') !== table || cell.colSpan !== 1 || cell.rowSpan !== 1)) return showToast('Split merged cells before merging this selection');
+            const rows = cells.map(cell => cell.parentElement.rowIndex);
+            const cols = cells.map(cell => cell.cellIndex);
+            const minRow = Math.min(...rows), maxRow = Math.max(...rows), minCol = Math.min(...cols), maxCol = Math.max(...cols);
+            if (cells.length !== (maxRow - minRow + 1) * (maxCol - minCol + 1)) return showToast('Select one rectangular group of cells');
+            const target = table.rows[minRow].cells[minCol];
+            const contents = cells.map(cell => cell.innerHTML).filter(value => value && value !== '&nbsp;');
+            target.colSpan = maxCol - minCol + 1;
+            target.rowSpan = maxRow - minRow + 1;
+            target.innerHTML = contents.join('<br>') || '&nbsp;';
+            cells.filter(cell => cell !== target).forEach(cell => cell.remove());
+            currentActiveCell = tableSelectionAnchor = target;
+            setSelectedTableCells([target]);
+            commitTableChange(table, 'Cells merged');
+        }
+
+        function splitActiveCell() {
+            if (!currentActiveCell) return;
+            const cell = currentActiveCell;
+            const rows = cell.rowSpan, cols = cell.colSpan;
+            if (rows === 1 && cols === 1) return showToast('This cell is not merged');
+            const table = cell.closest('table');
+            const rowIndex = cell.parentElement.rowIndex;
+            const colIndex = cell.cellIndex;
+            cell.rowSpan = 1;
+            cell.colSpan = 1;
+            for (let r = 0; r < rows; r++) {
+                const row = table.rows[rowIndex + r];
+                for (let c = 0; c < cols; c++) {
+                    if (r === 0 && c === 0) continue;
+                    const newCell = document.createElement(cell.tagName.toLowerCase());
+                    newCell.innerHTML = '&nbsp;';
+                    row.insertBefore(newCell, row.cells[colIndex + (r === 0 ? c : c)] || null);
+                }
+            }
+            setSelectedTableCells([cell]);
+            commitTableChange(table, 'Cell split');
+        }
+
+        function distributeTableColumns() {
+            if (!currentActiveCell) return;
+            const table = currentActiveCell.closest('table');
+            const count = Math.max(...Array.from(table.rows).map(row => row.cells.length));
+            Array.from(table.rows).forEach(row => Array.from(row.cells).forEach(cell => cell.style.width = `${100 / count}%`));
+            commitTableChange(table, 'Columns distributed evenly');
+        }
+
+        function sortTableByActiveColumn() {
+            if (!currentActiveCell) return;
+            const table = currentActiveCell.closest('table');
+            const column = currentActiveCell.cellIndex;
+            const body = table.tBodies[0] || table;
+            const rows = Array.from(body.rows);
+            rows.sort((a, b) => (a.cells[column]?.innerText.trim() || '').localeCompare(b.cells[column]?.innerText.trim() || '', undefined, { numeric: true, sensitivity: 'base' }) * (tableSortAscending ? 1 : -1));
+            rows.forEach(row => body.appendChild(row));
+            tableSortAscending = !tableSortAscending;
+            commitTableChange(table, `Table sorted ${tableSortAscending ? 'descending' : 'ascending'}`);
+        }
+
+        function toggleTableBanding() {
+            if (!currentActiveCell) return;
+            const table = currentActiveCell.closest('table');
+            table.classList.toggle('table-banded');
+            commitTableChange(table, table.classList.contains('table-banded') ? 'Banded rows enabled' : 'Banded rows disabled');
+        }
+
+        function toggleTableHeader() {
+            if (!currentActiveCell) return;
+            const table = currentActiveCell.closest('table');
+            let head = table.tHead;
+            if (head) {
+                const row = head.rows[0];
+                Array.from(row.cells).forEach(cell => {
+                    const td = document.createElement('td');
+                    td.innerHTML = cell.innerHTML;
+                    cell.replaceWith(td);
+                });
+                (table.tBodies[0] || table.createTBody()).insertBefore(row, table.tBodies[0]?.firstChild || null);
+                head.remove();
+            } else if (table.rows.length) {
+                const row = table.rows[0];
+                head = table.createTHead();
+                head.appendChild(row);
+                Array.from(row.cells).forEach(cell => {
+                    const th = document.createElement('th');
+                    th.scope = 'col';
+                    th.innerHTML = cell.innerHTML;
+                    cell.replaceWith(th);
+                });
+            }
+            currentActiveCell = table.rows[0]?.cells[0] || null;
+            commitTableChange(table, head && table.tHead ? 'Header row enabled' : 'Header row disabled');
         }
 
         // Page Tags
