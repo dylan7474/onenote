@@ -95,6 +95,15 @@
         }
         .attachment-card { transition: border-color 0.15s, background-color 0.15s, transform 0.15s; }
         .attachment-card:hover { transform: translateY(-1px); border-color: #a855f7; }
+        .inline-attachment {
+            display: inline-flex; align-items: center; gap: 0.35rem; max-width: 100%;
+            margin: 0.15rem 0.2rem; padding: 0.2rem 0.45rem; border: 1px solid #c4b5fd;
+            border-radius: 0.35rem; background: #f5f3ff; color: #5c2d91;
+            font-weight: 600; cursor: pointer; vertical-align: baseline; user-select: all;
+        }
+        .inline-attachment:hover { background: #ede9fe; border-color: #8b5cf6; }
+        .dark .inline-attachment { background: rgba(88, 28, 135, 0.35); border-color: #7e22ce; color: #e9d5ff; }
+        .inline-attachment::before { content: '\1F4CE'; font-size: 0.8em; }
         #pageWorkspace.attachment-dragover::after {
             content: 'Drop files to attach them to this page';
             position: absolute; inset: 1rem; z-index: 40; display: grid; place-items: center;
@@ -480,6 +489,7 @@
         // below the server's 50 MiB JSON request limit.
         const MAX_PAGE_ATTACHMENT_BYTES = 30 * 1024 * 1024;
         let saveTimer = null;
+        let attachmentInsertionRange = null;
 
         // On App Load
         window.addEventListener('load', async () => {
@@ -497,6 +507,7 @@
 
         function chooseAttachments() {
             if (!getActivePage()) return showToast('Select a page before attaching a file.');
+            rememberAttachmentInsertionPoint();
             const input = document.getElementById('attachmentInput');
             input.value = '';
             input.click();
@@ -522,7 +533,49 @@
             event.preventDefault();
             event.stopPropagation();
             event.currentTarget.classList.remove('attachment-dragover');
+            const range = document.caretRangeFromPoint?.(event.clientX, event.clientY);
+            if (range && range.startContainer.parentElement?.closest('.editable-content')) attachmentInsertionRange = range;
             attachFiles(Array.from(event.dataTransfer.files || []));
+        }
+
+        function rememberAttachmentInsertionPoint() {
+            const selection = window.getSelection();
+            if (selection?.rangeCount && selection.anchorNode?.parentElement?.closest('.editable-content')) {
+                attachmentInsertionRange = selection.getRangeAt(0).cloneRange();
+            }
+        }
+
+        function insertInlineAttachments(items) {
+            const page = getActivePage();
+            let range = attachmentInsertionRange;
+            if (!range || !document.contains(range.startContainer)) {
+                const editor = document.querySelector('.editable-content');
+                if (!editor) return;
+                range = document.createRange();
+                range.selectNodeContents(editor);
+                range.collapse(false);
+            }
+            range.deleteContents();
+            items.forEach((item, index) => {
+                if (index) range.insertNode(document.createTextNode(' '));
+                const link = document.createElement('span');
+                link.className = 'inline-attachment';
+                link.contentEditable = 'false';
+                link.dataset.attachmentId = item.id;
+                link.dataset.attachment = item.name;
+                link.setAttribute('role', 'link');
+                link.setAttribute('title', `Open or download ${item.name}`);
+                link.textContent = item.name;
+                range.insertNode(link);
+                range.setStartAfter(link);
+                range.collapse(true);
+            });
+            range.insertNode(document.createTextNode('\u00a0'));
+            const editor = range.startContainer.parentElement?.closest('.editable-content') || document.querySelector('.editable-content');
+            const block = editor?.closest('.note-block');
+            const storedBlock = page?.blocks?.find(item => item.id === block?.id);
+            if (storedBlock && editor) storedBlock.content = editor.innerHTML;
+            attachmentInsertionRange = null;
         }
 
         async function attachFiles(files) {
@@ -559,6 +612,7 @@
 
             if (!accepted.length) return;
             page.attachments = [...(page.attachments || []), ...accepted];
+            insertInlineAttachments(accepted);
             page.updatedAt = new Date().toISOString();
             saveStateToStorage();
             renderActivePage();
@@ -1020,11 +1074,16 @@
                     <div class="absolute -top-3 right-3 hidden group-hover:flex items-center space-x-1 bg-slate-200 dark:bg-slate-700 rounded px-1.5 py-0.5 text-xs text-slate-500">
                         <button onclick="deleteBlock('${block.id}')" class="hover:text-red-500 p-0.5"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
                     </div>
-                    <div contenteditable="true" onblur="saveBlockContent('${block.id}', this)" class="editable-content min-h-[60px] text-slate-800 dark:text-slate-100 focus:outline-none">
+                    <div contenteditable="true" onmouseup="rememberAttachmentInsertionPoint()" onkeyup="rememberAttachmentInsertionPoint()" onblur="saveBlockContent('${block.id}', this)" class="editable-content min-h-[60px] text-slate-800 dark:text-slate-100 focus:outline-none">
                         ${block.content || ''}
                     </div>
                 </div>
-            `).join('') + renderAttachments(page.attachments || []);
+            `).join('') + renderAttachments((page.attachments || []).filter(item => !documentAttachmentIds(page).has(item.id)));
+
+            workspace.querySelectorAll('.inline-attachment').forEach(link => link.addEventListener('click', event => {
+                event.preventDefault();
+                openAttachmentById(link.dataset.attachmentId);
+            }));
 
             // Load Ink Layer if existing
             loadCanvasInk(page.inkData);
@@ -1044,6 +1103,23 @@
                         <button onclick="removeAttachment(${index})" class="shrink-0 rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30" title="Remove ${escapeHtml(item.name)}" aria-label="Remove ${escapeHtml(item.name)}"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
                     </div>`).join('')}</div>
             </section>`;
+        }
+
+        function documentAttachmentIds(page) {
+            const ids = new Set();
+            (page.blocks || []).forEach(block => {
+                const template = document.createElement('template');
+                template.innerHTML = block.content || '';
+                template.content.querySelectorAll('[data-attachment-id]').forEach(node => ids.add(node.dataset.attachmentId));
+            });
+            return ids;
+        }
+
+        function openAttachmentById(id) {
+            const page = getActivePage();
+            const index = (page?.attachments || []).findIndex(item => item.id === id);
+            if (index < 0) return showToast('This attachment is unavailable.');
+            openAttachment(index);
         }
 
         function openAttachment(attachmentIndex) {
@@ -1780,6 +1856,39 @@
             return value;
         }
 
+        function decodeDataUrl(value) {
+            const match = String(value || '').match(/^data:([^;,]*)(;base64)?,(.*)$/s);
+            if (!match) return null;
+            return {
+                type: match[1] || 'application/octet-stream',
+                data: match[2] ? match[3] : btoa(unescape(encodeURIComponent(decodeURIComponent(match[3]))))
+            };
+        }
+
+        async function extractOneNoteAttachments(doc, resolveFile) {
+            const attachments = [];
+            const nodes = Array.from(doc.querySelectorAll('object[data-attachment], [data-attachment][data]'));
+            for (const node of nodes) {
+                const name = node.getAttribute('data-attachment') || node.getAttribute('name') || 'Attachment';
+                const source = node.getAttribute('data') || node.getAttribute('src') || '';
+                let payload = decodeDataUrl(source);
+                if (!payload && resolveFile) payload = await resolveFile(source);
+                const id = `att_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+                if (payload?.data) {
+                    const size = Math.floor(payload.data.length * 3 / 4);
+                    attachments.push({ id, name, type: node.getAttribute('type') || payload.type, size, createdAt: new Date().toISOString(), data: payload.data });
+                }
+                const link = doc.createElement('span');
+                link.className = 'inline-attachment';
+                link.contentEditable = 'false';
+                link.dataset.attachmentId = id;
+                link.dataset.attachment = name;
+                link.textContent = name;
+                node.replaceWith(link);
+            }
+            return attachments;
+        }
+
         function parseJsonImport(file) {
             return new Promise((resolve) => {
                 const reader = new FileReader();
@@ -1811,12 +1920,13 @@
         function parseHtmlImport(file) {
             return new Promise((resolve) => {
                 const reader = new FileReader();
-                reader.onload = function(e) {
+                reader.onload = async function(e) {
                     const htmlText = e.target.result;
                     const parser = new DOMParser();
                     const doc = parser.parseFromString(htmlText, 'text/html');
 
                     const pageTitle = doc.title || doc.querySelector('h1')?.innerText || file.name.replace(/\.[^/.]+$/, "");
+                    const attachments = await extractOneNoteAttachments(doc);
                     const bodyContent = doc.body ? doc.body.innerHTML : htmlText;
 
                     const sec = getActiveSection();
@@ -1827,6 +1937,7 @@
                             createdAt: new Date().toISOString(),
                             updatedAt: new Date().toISOString(),
                             tags: ['Imported OneNote'],
+                            attachments,
                             blocks: [
                                 {
                                     id: 'blk_' + Date.now(),
@@ -1862,6 +1973,13 @@
                     const parser = new DOMParser();
                     const doc = parser.parseFromString(htmlContent, 'text/html');
                     const pageTitle = doc.title || filename.replace(/^.*[\\\/]/, '').replace(/\.[^/.]+$/, "");
+                    const directory = filename.includes('/') ? filename.slice(0, filename.lastIndexOf('/') + 1) : '';
+                    const attachments = await extractOneNoteAttachments(doc, async source => {
+                        const cleanSource = decodeURIComponent(source.split(/[?#]/, 1)[0]).replace(/^\.\//, '');
+                        const entry = zip.file(directory + cleanSource) || zip.file(cleanSource);
+                        if (!entry) return null;
+                        return { type: 'application/octet-stream', data: await entry.async('base64') };
+                    });
 
                     importedPages.push({
                         id: 'page_' + Date.now() + Math.random().toString(36).substr(2, 4),
@@ -1873,6 +1991,7 @@
                         createdAt: new Date().toISOString(),
                         updatedAt: new Date().toISOString(),
                         tags: ['OneNote Archive'],
+                        attachments,
                         blocks: [
                             {
                                 id: 'blk_' + Date.now(),
