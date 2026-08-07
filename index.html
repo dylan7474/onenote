@@ -86,6 +86,13 @@
         .app-menu-panel { min-width: 14rem; }
         .app-menu-item[aria-checked="true"] .menu-check { opacity: 1; }
         .horizontal-section-tab { border-top: 3px solid var(--section-color, #8b5cf6); }
+        .page-list-item { margin-left: calc(var(--page-level, 0) * 1rem); }
+        .page-list-item[data-page-level="1"], .page-list-item[data-page-level="2"] {
+            border-left-color: #c4b5fd;
+        }
+        .dark .page-list-item[data-page-level="1"], .dark .page-list-item[data-page-level="2"] {
+            border-left-color: #6d28d9;
+        }
     </style>
 </head>
 <body class="h-full bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-100 flex flex-col overflow-hidden antialiased">
@@ -751,20 +758,93 @@
                 filteredPages = sec.pages.filter(p => p.title.toLowerCase().includes(q) || (p.tags && p.tags.some(t => t.toLowerCase().includes(q))));
             }
 
-            container.innerHTML = filteredPages.map(page => `
-                <div onclick="selectPage('${page.id}')" class="group p-2.5 rounded-lg cursor-pointer transition border border-transparent ${page.id === state.activePageId ? 'bg-white dark:bg-slate-700/80 border-slate-200 dark:border-slate-600 shadow-sm' : 'hover:bg-slate-200/60 dark:hover:bg-slate-700/40'}">
+            container.innerHTML = filteredPages.map(page => {
+                const pageLevel = getPageLevel(page);
+                return `
+                <div onclick="selectPage('${page.id}')" data-page-level="${pageLevel}" style="--page-level: ${pageLevel}" class="page-list-item group p-2.5 rounded-lg cursor-pointer transition border border-transparent ${page.id === state.activePageId ? 'bg-white dark:bg-slate-700/80 border-slate-200 dark:border-slate-600 shadow-sm' : 'hover:bg-slate-200/60 dark:hover:bg-slate-700/40'}">
                     <div class="flex items-start justify-between">
-                        <h4 class="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate ${page.id === state.activePageId ? 'text-onenote-700 dark:text-purple-300' : ''}">${escapeHtml(page.title || 'Untitled Page')}</h4>
-                        <button onclick="event.stopPropagation(); deletePage('${page.id}')" class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 p-0.5 transition">
-                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-                        </button>
+                        <div class="flex items-center min-w-0 gap-1">
+                            ${pageLevel ? '<i data-lucide="corner-down-right" class="w-3.5 h-3.5 shrink-0 text-purple-400" aria-hidden="true"></i>' : ''}
+                            <h4 class="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate ${page.id === state.activePageId ? 'text-onenote-700 dark:text-purple-300' : ''}">${escapeHtml(page.title || 'Untitled Page')}</h4>
+                        </div>
+                        <div class="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 flex shrink-0 items-center transition">
+                            <button onclick="event.stopPropagation(); makeSubpage('${page.id}')" class="text-slate-400 hover:text-onenote-600 p-0.5" title="Make subpage" aria-label="Make ${escapeHtml(page.title || 'Untitled Page')} a subpage">
+                                <i data-lucide="indent-increase" class="w-3.5 h-3.5"></i>
+                            </button>
+                            <button onclick="event.stopPropagation(); promotePage('${page.id}')" class="text-slate-400 hover:text-onenote-600 p-0.5" title="Promote page" aria-label="Promote ${escapeHtml(page.title || 'Untitled Page')}">
+                                <i data-lucide="indent-decrease" class="w-3.5 h-3.5"></i>
+                            </button>
+                            <button onclick="event.stopPropagation(); deletePage('${page.id}')" class="text-slate-400 hover:text-red-500 p-0.5" title="Delete page" aria-label="Delete ${escapeHtml(page.title || 'Untitled Page')}">
+                                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                            </button>
+                        </div>
                     </div>
                     <div class="flex items-center justify-between text-[11px] text-slate-400 dark:text-slate-500 mt-1">
                         <span>${new Date(page.updatedAt || page.createdAt).toLocaleDateString([], {month:'short', day:'numeric'})}</span>
                         ${page.tags && page.tags.length > 0 ? `<span class="bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 px-1.5 py-0.2 rounded text-[10px] font-medium">${escapeHtml(page.tags[0])}</span>` : ''}
                     </div>
-                </div>
-            `).join('');
+                </div>`;
+            }).join('');
+        }
+
+        function getPageLevel(page) {
+            const level = Number(page && page.level);
+            return Number.isInteger(level) ? Math.max(0, Math.min(2, level)) : 0;
+        }
+
+        function getPageSubtreeEnd(pages, pageIndex) {
+            const level = getPageLevel(pages[pageIndex]);
+            let end = pageIndex + 1;
+            while (end < pages.length && getPageLevel(pages[end]) > level) end++;
+            return end;
+        }
+
+        function makeSubpage(id) {
+            const sec = getActiveSection();
+            if (!sec || !sec.pages) return;
+            const pageIndex = sec.pages.findIndex(page => page.id === id);
+            if (pageIndex <= 0) {
+                showToast('Add or select a page above this one before making it a subpage.');
+                return;
+            }
+
+            const page = sec.pages[pageIndex];
+            const level = getPageLevel(page);
+            const previousLevel = getPageLevel(sec.pages[pageIndex - 1]);
+            if (level >= 2) {
+                showToast('Pages can be nested up to two levels deep.');
+                return;
+            }
+            if (previousLevel < level) {
+                showToast('This page needs a page at the same level above it.');
+                return;
+            }
+
+            const subtreeEnd = getPageSubtreeEnd(sec.pages, pageIndex);
+            for (let i = pageIndex; i < subtreeEnd; i++) sec.pages[i].level = getPageLevel(sec.pages[i]) + 1;
+            saveStateToStorage();
+            renderPages(document.getElementById('pageFilterInput').value);
+            lucide.createIcons();
+            showToast('Page made into a subpage.');
+        }
+
+        function promotePage(id) {
+            const sec = getActiveSection();
+            if (!sec || !sec.pages) return;
+            const pageIndex = sec.pages.findIndex(page => page.id === id);
+            if (pageIndex < 0) return;
+            const level = getPageLevel(sec.pages[pageIndex]);
+            if (level === 0) {
+                showToast('This page is already a top-level page.');
+                return;
+            }
+
+            const subtreeEnd = getPageSubtreeEnd(sec.pages, pageIndex);
+            for (let i = pageIndex; i < subtreeEnd; i++) sec.pages[i].level = getPageLevel(sec.pages[i]) - 1;
+            saveStateToStorage();
+            renderPages(document.getElementById('pageFilterInput').value);
+            lucide.createIcons();
+            showToast('Page promoted.');
         }
 
         function filterPages(val) {
