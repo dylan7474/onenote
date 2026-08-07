@@ -23,6 +23,11 @@ if [ ! -f "${SCRIPT_DIR}/index.html" ]; then
   exit 1
 fi
 
+if [ ! -f "${SCRIPT_DIR}/server.js" ]; then
+  echo "Error: server.js was not found in ${SCRIPT_DIR}."
+  exit 1
+fi
+
 echo "=== Deploying ${PROJECT_NAME} on http://localhost:${PORT_ARG} ==="
 
 BUILD_DIR="$(mktemp -d)"
@@ -31,26 +36,15 @@ cleanup() {
 }
 trap cleanup EXIT
 
-cp "${SCRIPT_DIR}/index.html" "${BUILD_DIR}/index.html"
-
-cat > "${BUILD_DIR}/nginx.conf" <<NGINX_EOF
-server {
-  listen ${PORT_ARG};
-  server_name _;
-
-  root /usr/share/nginx/html;
-  index index.html;
-
-  location / {
-    try_files \$uri \$uri/ /index.html;
-  }
-}
-NGINX_EOF
+cp "${SCRIPT_DIR}/index.html" "${SCRIPT_DIR}/server.js" "${BUILD_DIR}/"
 
 cat > "${BUILD_DIR}/Dockerfile" <<'DOCKER_EOF'
-FROM nginx:1.29-alpine
-COPY index.html /usr/share/nginx/html/index.html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+FROM node:22-alpine
+WORKDIR /app
+COPY index.html server.js ./
+ENV DATA_FILE=/data/state.json
+VOLUME ["/data"]
+CMD ["node", "server.js"]
 DOCKER_EOF
 
 echo "Building Docker image..."
@@ -63,6 +57,8 @@ echo "Starting container..."
 docker run -d \
   --name "${CONTAINER_NAME}" \
   -p "${PORT_ARG}:${PORT_ARG}" \
+  -e "PORT=${PORT_ARG}" \
+  -v "onenote-data:/data" \
   --restart unless-stopped \
   "${IMAGE_NAME}" >/dev/null
 

@@ -429,10 +429,13 @@
         // Active Table Focus Tracking
         let currentActiveCell = null;
 
+        const STATE_API_URL = '/api/state';
+        let saveTimer = null;
+
         // On App Load
-        window.addEventListener('load', () => {
+        window.addEventListener('load', async () => {
             lucide.createIcons();
-            loadStateFromStorage();
+            await loadStateFromServer();
             if (!state.notebooks || state.notebooks.length === 0) {
                 initializeDefaultData();
             }
@@ -443,25 +446,59 @@
             setupTableEventListeners();
         });
 
-        // Local Storage Sync
+        // Server persistence. Saves are briefly debounced so typing does not create
+        // a request for every keystroke, while page exit uses keepalive to flush.
         function saveStateToStorage() {
+            clearTimeout(saveTimer);
+            saveTimer = setTimeout(() => persistState(), 250);
+        }
+
+        async function persistState(useKeepalive = false) {
+            clearTimeout(saveTimer);
+            saveTimer = null;
             try {
-                localStorage.setItem('onenote_web_state', JSON.stringify(state));
+                const response = await fetch(STATE_API_URL, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(state),
+                    keepalive: useKeepalive
+                });
+                if (!response.ok) {
+                    throw new Error(`Server returned ${response.status}`);
+                }
             } catch (e) {
-                console.error("Storage save failed", e);
+                console.error('Server save failed', e);
+                showToast('Unable to save changes to the server.');
             }
         }
 
-        function loadStateFromStorage() {
+        async function loadStateFromServer() {
             try {
-                const stored = localStorage.getItem('onenote_web_state');
-                if (stored) {
-                    state = JSON.parse(stored);
+                const response = await fetch(STATE_API_URL, { cache: 'no-store' });
+                if (response.ok) {
+                    state = await response.json();
+                    return;
+                }
+                if (response.status !== 404) {
+                    throw new Error(`Server returned ${response.status}`);
+                }
+
+                // Migrate data created by older versions of the application once.
+                const legacyState = localStorage.getItem('onenote_web_state');
+                if (legacyState) {
+                    state = JSON.parse(legacyState);
+                    await persistState();
+                    localStorage.removeItem('onenote_web_state');
                 }
             } catch (e) {
-                console.error("Storage load failed", e);
+                console.error('Server load failed', e);
+                showToast('Unable to load saved data from the server.');
             }
         }
+
+        window.addEventListener('pagehide', () => {
+            if (saveTimer) persistState(true);
+        });
 
         // Initialize Rich Default OneNote Data
         function initializeDefaultData() {
@@ -484,7 +521,7 @@
                                     {
                                         id: 'blk_1',
                                         content: `<h2>🎉 Welcome to your new Digital Notebook!</h2>
-                                        <p>This web application brings the power of Microsoft OneNote to your browser with full offline persistence, drawing, free-form blocks, and standard data import/export capability.</p>
+                                        <p>This web application brings the power of Microsoft OneNote to your browser with server-side persistence, drawing, free-form blocks, and standard data import/export capability.</p>
                                         <br>
                                         <h3>Key Features:</h3>
                                         <ul>
@@ -1515,7 +1552,7 @@
                                         <p>Summary of technical requirements gathered during client discovery session:</p>
                                         <ul>
                                             <li>Client requires single-page fluid user interface</li>
-                                            <li>Strict offline capability with localStorage or local DB</li>
+                                            <li>Automatic server-side storage and reload across visits</li>
                                             <li>OneNote style tab navigation & section colors</li>
                                         </ul>
                                         <br>
