@@ -3,9 +3,9 @@
 set -euo pipefail
 
 PORT_ARG=${1:-3020}
-PROJECT_NAME="SkyRadar"
-IMAGE_NAME="skyradar"
-CONTAINER_NAME="skyradar"
+PROJECT_NAME="OneNote Web"
+IMAGE_NAME="onenote-web"
+CONTAINER_NAME="onenote-web"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if ! [[ "${PORT_ARG}" =~ ^[0-9]+$ ]] || (( PORT_ARG < 1 || PORT_ARG > 65535 )); then
