@@ -22,6 +22,25 @@ Open <http://localhost:3020>. Do not open `index.html` directly: the application
 uses the server's `/api/state` endpoint to save and restore data. `DATA_FILE`
 defaults to `./data/state.json`, and request bodies are limited to 50 MiB.
 
+## Using file attachments
+
+Select a page and place the caret in a note, then choose **Insert → File
+attachment**, use **Attach File** on the editor toolbar, or drop one or more
+files onto the page. Each accepted file is inserted at the caret; selecting its
+attachment chip opens or downloads it. If there is no usable caret, the file is
+inserted at the end of the first note container.
+
+Attachments are limited to 10 MiB per file and 30 MiB in total per page. They
+are Base64-encoded inside the notebook state and JSON exports rather than stored
+as separate files, so attachments increase the size of `DATA_FILE`, exports,
+and every save request. Back up the data file or Docker volume before importing
+large archives.
+
+HTML imports can recover an attachment only when its OneNote `<object
+data-attachment>` contains an embedded data URL. ZIP imports can also resolve a
+referenced payload stored in the ZIP alongside the HTML page. Native `.one` and
+`.onepkg` files remain unsupported.
+
 ## Deploy with Docker
 
 ```bash
@@ -168,8 +187,8 @@ independently:
    actions are introduced.
 5. Add undo/redo and keyboard/focus tests before expanding the editor toolbar.
 6. Replace bitmap ink with a stroke model plus pen, highlighter, and eraser.
-7. Add attachment storage rather than embedding large binary data in the state
-   JSON, then support images and file attachments.
+7. Move attachments out of the state JSON into dedicated blob storage, then add
+   inline images and attachment previews/printouts.
 8. Add export/restore tests and an explicit data-backup command to the server.
 
 ## Microsoft feature references
