@@ -1,0 +1,1609 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OneNote - Elegant Web Edition</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        onenote: {
+                            50: '#f5f3ff',
+                            100: '#ede9fe',
+                            500: '#7719aa',
+                            600: '#6b139b',
+                            700: '#5c2d91',
+                            800: '#4c1d75',
+                            900: '#3b1259'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- JSZip for parsing exported OneNote ZIP archives -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(156, 163, 175, 0.4);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(156, 163, 175, 0.7);
+        }
+        /* Page Note Container Styles */
+        .note-block {
+            min-width: 250px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .note-block:focus-within {
+            box-shadow: 0 4px 12px rgba(119, 25, 170, 0.12);
+            border-color: #7719aa;
+        }
+        /* Content Editable Styling */
+        [contenteditable]:focus {
+            outline: none;
+        }
+        .editable-content h1 { font-size: 1.75rem; font-weight: 700; margin-bottom: 0.5rem; }
+        .editable-content h2 { font-size: 1.35rem; font-weight: 600; margin-bottom: 0.5rem; }
+        .editable-content ul { list-style-type: disc; padding-left: 1.25rem; margin-bottom: 0.5rem; }
+        .editable-content ol { list-style-type: decimal; padding-left: 1.25rem; margin-bottom: 0.5rem; }
+        .editable-content blockquote { border-left: 3px solid #7719aa; padding-left: 0.75rem; color: #4b5563; font-style: italic; }
+        .editable-content table { border-collapse: collapse; width: 100%; margin: 0.75rem 0; min-width: 250px; }
+        .editable-content table, .editable-content th, .editable-content td { border: 1px solid #cbd5e1; padding: 8px 12px; position: relative; }
+        .dark .editable-content table, .dark .editable-content th, .dark .editable-content td { border-color: #475569; }
+        .editable-content th { background-color: #f1f5f9; font-weight: 600; text-align: left; }
+        .dark .editable-content th { background-color: #1e293b; }
+        .editable-content td:focus, .editable-content th:focus { outline: 2px solid #7719aa; outline-offset: -2px; }
+        .editable-content tr:hover td { background-color: rgba(119, 25, 170, 0.02); }
+        .dark .editable-content tr:hover td { background-color: rgba(168, 85, 247, 0.05); }
+        
+        /* Interactive Table Grid Matrix Selector */
+        .grid-cell { width: 20px; height: 20px; border: 1px solid #cbd5e1; border-radius: 2px; cursor: pointer; transition: background 0.15s, border-color 0.15s; }
+        .grid-cell.active { background-color: #c084fc; border-color: #7719aa; }
+        .dark .grid-cell { border-color: #475569; }
+        .dark .grid-cell.active { background-color: #9333ea; border-color: #c084fc; }
+    </style>
+</head>
+<body class="h-full bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-100 flex flex-col overflow-hidden antialiased">
+
+    <!-- Top Header / Ribbon -->
+    <header class="h-14 bg-onenote-700 text-white flex items-center justify-between px-4 select-none shrink-0 z-20 shadow-md">
+        <div class="flex items-center space-x-3">
+            <div class="flex items-center space-x-2 font-bold text-lg tracking-wide">
+                <div class="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center font-extrabold text-white text-xl">
+                    N
+                </div>
+                <span>OneNote</span>
+                <span class="text-xs font-normal bg-white/20 px-2 py-0.5 rounded-full">Web Pro</span>
+            </div>
+            
+            <div class="h-6 w-px bg-white/20 mx-2 hidden sm:block"></div>
+
+            <!-- Notebook Selector Dropdown -->
+            <div class="relative">
+                <button id="notebookDropdownBtn" onclick="toggleNotebookMenu()" class="flex items-center space-x-2 bg-onenote-800/80 hover:bg-onenote-800 px-3 py-1.5 rounded-md text-sm font-medium transition">
+                    <i data-lucide="book" class="w-4 h-4 text-purple-200"></i>
+                    <span id="currentNotebookTitle">My Notebook</span>
+                    <i data-lucide="chevron-down" class="w-4 h-4 text-purple-200"></i>
+                </button>
+
+                <!-- Notebook Selector Menu -->
+                <div id="notebookMenu" class="hidden absolute top-full left-0 mt-2 w-64 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-lg shadow-xl border border-slate-200 dark:border-slate-700 py-2 z-50">
+                    <div class="px-3 py-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Notebooks</div>
+                    <div id="notebookList" class="max-h-48 overflow-y-auto py-1">
+                        <!-- Populated by JS -->
+                    </div>
+                    <div class="border-t border-slate-200 dark:border-slate-700 mt-1 pt-1 px-2">
+                        <button onclick="promptCreateNotebook()" class="w-full flex items-center space-x-2 px-2 py-1.5 text-sm text-onenote-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-slate-700/50 rounded-md transition">
+                            <i data-lucide="plus-circle" class="w-4 h-4"></i>
+                            <span>New Notebook</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Global Search Bar -->
+        <div class="flex-1 max-w-md mx-4 hidden md:block">
+            <div class="relative">
+                <i data-lucide="search" class="w-4 h-4 absolute left-3 top-2.5 text-purple-200"></i>
+                <input type="text" id="globalSearch" placeholder="Search pages, tags, and notes..." oninput="handleSearch(this.value)" class="w-full bg-onenote-800/60 focus:bg-onenote-800 text-white placeholder-purple-200 text-sm rounded-md pl-9 pr-4 py-1.5 focus:outline-none focus:ring-2 focus:ring-purple-300 transition">
+            </div>
+        </div>
+
+        <!-- Header Controls -->
+        <div class="flex items-center space-x-2">
+            <button onclick="openImportModal()" class="flex items-center space-x-1 bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-md text-sm font-medium transition" title="Import OneNote Data">
+                <i data-lucide="file-input" class="w-4 h-4"></i>
+                <span class="hidden sm:inline">Import OneNote</span>
+            </button>
+            <button onclick="exportCurrentNotebook()" class="p-1.5 rounded-md bg-white/10 hover:bg-white/20 text-white transition" title="Export Notebook JSON">
+                <i data-lucide="download" class="w-4 h-4"></i>
+            </button>
+            <button onclick="toggleDarkMode()" class="p-1.5 rounded-md bg-white/10 hover:bg-white/20 text-white transition" title="Toggle Theme">
+                <i data-lucide="moon" class="w-4 h-4 dark:hidden"></i>
+                <i data-lucide="sun" class="w-4 h-4 hidden dark:block"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Three-Column Workspace Layout -->
+    <div class="flex-1 flex overflow-hidden relative">
+
+        <!-- Column 1: Sections Navigation Sidebar -->
+        <aside class="w-52 bg-slate-200/80 dark:bg-slate-800/90 border-r border-slate-300 dark:border-slate-700 flex flex-col shrink-0">
+            <div class="p-3 flex items-center justify-between border-b border-slate-300 dark:border-slate-700">
+                <span class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Sections</span>
+                <button onclick="promptCreateSection()" class="p-1 hover:bg-slate-300 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300 transition" title="Add Section">
+                    <i data-lucide="plus" class="w-4 h-4"></i>
+                </button>
+            </div>
+            
+            <div id="sectionList" class="flex-1 overflow-y-auto p-2 space-y-1">
+                <!-- Populated dynamically -->
+            </div>
+        </aside>
+
+        <!-- Column 2: Pages List Sidebar -->
+        <aside class="w-64 bg-slate-100 dark:bg-slate-800 border-r border-slate-300 dark:border-slate-700 flex flex-col shrink-0">
+            <div class="p-3 flex items-center justify-between border-b border-slate-300 dark:border-slate-700 bg-slate-200/50 dark:bg-slate-800">
+                <div class="flex items-center space-x-1.5">
+                    <i data-lucide="file-text" class="w-4 h-4 text-onenote-600 dark:text-purple-400"></i>
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Pages</span>
+                </div>
+                <button onclick="addNewPage()" class="flex items-center space-x-1 text-xs bg-onenote-600 hover:bg-onenote-700 text-white px-2 py-1 rounded shadow-sm transition">
+                    <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                    <span>Add Page</span>
+                </button>
+            </div>
+
+            <!-- Page Search / Quick Filter -->
+            <div class="p-2 border-b border-slate-200 dark:border-slate-700/50">
+                <input type="text" id="pageFilterInput" oninput="filterPages(this.value)" placeholder="Filter pages..." class="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-2.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-onenote-500">
+            </div>
+
+            <div id="pageList" class="flex-1 overflow-y-auto p-2 space-y-1">
+                <!-- Dynamic Page List Items -->
+            </div>
+        </aside>
+
+        <!-- Column 3: Rich Canvas Note Editor -->
+        <main class="flex-1 flex flex-col bg-white dark:bg-slate-900 overflow-hidden relative">
+            
+            <!-- Editor Formatting & Tool Ribbon -->
+            <div id="editorRibbon" class="border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-2 flex flex-wrap items-center gap-1.5 select-none z-10">
+                <!-- Text Formatting Group -->
+                <div class="flex items-center space-x-0.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md p-0.5 shadow-sm">
+                    <button onclick="formatText('bold')" class="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-700 dark:text-slate-200" title="Bold (Ctrl+B)">
+                        <i data-lucide="bold" class="w-4 h-4"></i>
+                    </button>
+                    <button onclick="formatText('italic')" class="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-700 dark:text-slate-200" title="Italic (Ctrl+I)">
+                        <i data-lucide="italic" class="w-4 h-4"></i>
+                    </button>
+                    <button onclick="formatText('underline')" class="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-700 dark:text-slate-200" title="Underline (Ctrl+U)">
+                        <i data-lucide="underline" class="w-4 h-4"></i>
+                    </button>
+                    <button onclick="formatText('strikeThrough')" class="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-700 dark:text-slate-200" title="Strikethrough">
+                        <i data-lucide="strikethrough" class="w-4 h-4"></i>
+                    </button>
+                </div>
+
+                <!-- Headings Dropdown -->
+                <select onchange="formatHeading(this.value); this.value='';" class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md px-2 py-1 text-xs text-slate-700 dark:text-slate-200 focus:outline-none shadow-sm">
+                    <option value="">Style / Heading</option>
+                    <option value="H1">Heading 1</option>
+                    <option value="H2">Heading 2</option>
+                    <option value="H3">Heading 3</option>
+                    <option value="P">Paragraph</option>
+                </select>
+
+                <!-- Lists & Elements -->
+                <div class="flex items-center space-x-0.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md p-0.5 shadow-sm">
+                    <button onclick="formatText('insertUnorderedList')" class="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-700 dark:text-slate-200" title="Bullet List">
+                        <i data-lucide="list" class="w-4 h-4"></i>
+                    </button>
+                    <button onclick="formatText('insertOrderedList')" class="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-700 dark:text-slate-200" title="Numbered List">
+                        <i data-lucide="list-ordered" class="w-4 h-4"></i>
+                    </button>
+                    <button onclick="insertCheckbox()" class="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-700 dark:text-slate-200" title="To-Do Checkbox">
+                        <i data-lucide="check-square" class="w-4 h-4 text-purple-600 dark:text-purple-400"></i>
+                    </button>
+                    
+                    <!-- Enhanced OneNote Table Dropdown Menu -->
+                    <div class="relative inline-block">
+                        <button onclick="toggleTableMenu(event)" class="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-700 dark:text-slate-200 flex items-center space-x-1" title="Table Tools">
+                            <i data-lucide="table" class="w-4 h-4 text-onenote-600 dark:text-purple-400"></i>
+                            <i data-lucide="chevron-down" class="w-3 h-3 text-slate-400"></i>
+                        </button>
+                        
+                        <div id="tableDropdownMenu" class="hidden absolute top-full left-0 mt-1 w-64 bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-slate-200 dark:border-slate-700 p-3 z-50 text-slate-800 dark:text-slate-100">
+                            <div class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2 flex items-center justify-between">
+                                <span>INSERT TABLE</span>
+                                <span id="gridDimensionsLabel" class="text-purple-600 dark:text-purple-400 font-bold">1 x 1</span>
+                            </div>
+                            
+                            <!-- 6x6 Visual Grid Selector Matrix -->
+                            <div id="tableGridMatrix" class="grid grid-cols-6 gap-1 mb-3 p-1.5 bg-slate-50 dark:bg-slate-900 rounded-md border border-slate-200 dark:border-slate-700" onmouseleave="resetGridHover()">
+                                <!-- Dynamic Grid Cells generated by JS -->
+                            </div>
+
+                            <div class="border-t border-slate-200 dark:border-slate-700 pt-2 space-y-1 text-xs">
+                                <div class="font-semibold text-slate-400 text-[10px] uppercase tracking-wider mb-1">Active Table Actions</div>
+                                <div class="grid grid-cols-2 gap-1">
+                                    <button onclick="addTableRow('above')" class="flex items-center space-x-1 p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-left"><i data-lucide="arrow-up" class="w-3.5 h-3.5 text-purple-600"></i><span>Row Above</span></button>
+                                    <button onclick="addTableRow('below')" class="flex items-center space-x-1 p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-left"><i data-lucide="arrow-down" class="w-3.5 h-3.5 text-purple-600"></i><span>Row Below</span></button>
+                                    <button onclick="addTableColumn('left')" class="flex items-center space-x-1 p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-left"><i data-lucide="arrow-left" class="w-3.5 h-3.5 text-purple-600"></i><span>Col Left</span></button>
+                                    <button onclick="addTableColumn('right')" class="flex items-center space-x-1 p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-left"><i data-lucide="arrow-right" class="w-3.5 h-3.5 text-purple-600"></i><span>Col Right</span></button>
+                                </div>
+                                <div class="border-t border-slate-200 dark:border-slate-700 my-1"></div>
+                                <button onclick="deleteCurrentTable()" class="w-full flex items-center space-x-1.5 p-1.5 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 rounded text-left font-medium">
+                                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                    <span>Delete Table</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Color & Highlights -->
+                <div class="flex items-center space-x-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md p-1 shadow-sm">
+                    <label class="p-0.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded cursor-pointer" title="Font Color">
+                        <i data-lucide="palette" class="w-4 h-4 text-slate-700 dark:text-slate-200"></i>
+                        <input type="color" onchange="formatText('foreColor', this.value)" class="sr-only">
+                    </label>
+                    <button onclick="formatText('hiliteColor', '#fef08a')" class="p-1.5 hover:bg-amber-100 rounded text-amber-600" title="Yellow Highlight">
+                        <i data-lucide="highlighter" class="w-4 h-4"></i>
+                    </button>
+                </div>
+
+                <!-- OneNote Tag Chips -->
+                <div class="flex items-center space-x-1 border-l border-slate-300 dark:border-slate-700 pl-2">
+                    <button onclick="addPageTag('Important')" class="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 px-2 py-1 rounded hover:opacity-80 transition flex items-center space-x-1">
+                        <i data-lucide="star" class="w-3 h-3"></i>
+                        <span>Important</span>
+                    </button>
+                    <button onclick="addPageTag('Question')" class="text-xs bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300 px-2 py-1 rounded hover:opacity-80 transition flex items-center space-x-1">
+                        <i data-lucide="help-circle" class="w-3 h-3"></i>
+                        <span>Question</span>
+                    </button>
+                    <button onclick="addPageTag('Idea')" class="text-xs bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 px-2 py-1 rounded hover:opacity-80 transition flex items-center space-x-1">
+                        <i data-lucide="lightbulb" class="w-3 h-3"></i>
+                        <span>Idea</span>
+                    </button>
+                </div>
+
+                <div class="flex-1"></div>
+
+                <!-- Ink / Canvas Draw Mode Toggle -->
+                <div class="flex items-center space-x-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md p-0.5 shadow-sm">
+                    <button id="drawModeBtn" onclick="toggleDrawMode()" class="flex items-center space-x-1 px-2 py-1 text-xs font-medium rounded text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition">
+                        <i data-lucide="pen-tool" class="w-3.5 h-3.5 text-onenote-600 dark:text-purple-400"></i>
+                        <span>Ink / Draw</span>
+                    </button>
+                    <div id="drawTools" class="hidden flex items-center space-x-1 pl-1 border-l border-slate-200 dark:border-slate-700">
+                        <input type="color" id="penColor" value="#7719aa" class="w-6 h-6 rounded cursor-pointer border-0">
+                        <select id="penSize" class="bg-slate-100 dark:bg-slate-700 text-xs rounded px-1 py-0.5 border-none">
+                            <option value="2">Thin</option>
+                            <option value="4" selected>Medium</option>
+                            <option value="8">Thick</option>
+                        </select>
+                        <button onclick="clearCanvas()" class="p-1 hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 rounded" title="Clear Ink Layer">
+                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Editor Page Workspace Container -->
+            <div id="pageWorkspace" class="flex-1 overflow-auto p-8 relative bg-grid-pattern min-h-full select-text" onclick="handleWorkspaceClick(event)">
+                
+                <!-- Overlay Drawing Canvas -->
+                <canvas id="drawingCanvas" class="absolute top-0 left-0 pointer-events-none z-10"></canvas>
+
+                <!-- Page Header (Title, Timestamp, Tags) -->
+                <div class="max-w-4xl mx-auto mb-6">
+                    <input type="text" id="pageTitleInput" oninput="updateActivePageTitle(this.value)" placeholder="Page Title" class="w-full text-3xl font-bold bg-transparent border-b-2 border-transparent focus:border-onenote-500 focus:outline-none text-slate-900 dark:text-slate-100 pb-1 transition">
+                    
+                    <div class="flex items-center justify-between text-xs text-slate-400 dark:text-slate-500 mt-2">
+                        <span id="pageTimestamp">Created: --</span>
+                        <div id="pageTagsList" class="flex items-center space-x-1">
+                            <!-- Page Tags rendered dynamically -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Page Content Canvas (Floating Container Area) -->
+                <div id="pageContentArea" class="max-w-4xl mx-auto min-h-[500px] relative">
+                    <!-- Note Containers rendered here dynamically -->
+                </div>
+
+                <!-- Floating Table Contextual Quick Toolbar -->
+                <div id="tableQuickBar" class="hidden absolute z-30 bg-slate-900/90 dark:bg-slate-800/95 backdrop-blur-md text-white text-xs rounded-lg shadow-2xl p-1 flex items-center space-x-1 border border-slate-700 transition-all duration-150">
+                    <button onclick="addTableRow('above')" class="p-1.5 hover:bg-white/20 rounded" title="Insert Row Above"><i data-lucide="arrow-up" class="w-3.5 h-3.5"></i></button>
+                    <button onclick="addTableRow('below')" class="p-1.5 hover:bg-white/20 rounded" title="Insert Row Below"><i data-lucide="arrow-down" class="w-3.5 h-3.5"></i></button>
+                    <div class="h-4 w-px bg-white/20 mx-0.5"></div>
+                    <button onclick="addTableColumn('left')" class="p-1.5 hover:bg-white/20 rounded" title="Insert Column Left"><i data-lucide="arrow-left" class="w-3.5 h-3.5"></i></button>
+                    <button onclick="addTableColumn('right')" class="p-1.5 hover:bg-white/20 rounded" title="Insert Column Right"><i data-lucide="arrow-right" class="w-3.5 h-3.5"></i></button>
+                    <div class="h-4 w-px bg-white/20 mx-0.5"></div>
+                    <!-- Cell Shading Color Picker -->
+                    <label class="p-1.5 hover:bg-white/20 rounded cursor-pointer flex items-center space-x-1" title="Cell Shading / Background">
+                        <i data-lucide="paint-bucket" class="w-3.5 h-3.5 text-amber-300"></i>
+                        <input type="color" onchange="applyCellShading(this.value)" class="sr-only">
+                    </label>
+                    <div class="h-4 w-px bg-white/20 mx-0.5"></div>
+                    <button onclick="deleteTableRow()" class="p-1.5 hover:bg-red-500/30 text-red-300 rounded" title="Delete Row"><i data-lucide="minus-circle" class="w-3.5 h-3.5"></i></button>
+                    <button onclick="deleteTableColumn()" class="p-1.5 hover:bg-red-500/30 text-red-300 rounded" title="Delete Column"><i data-lucide="columns" class="w-3.5 h-3.5"></i></button>
+                    <button onclick="deleteCurrentTable()" class="p-1.5 hover:bg-red-600 text-red-200 rounded" title="Delete Entire Table"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Import OneNote Data Modal -->
+    <div id="importModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-800 rounded-xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-700 space-y-5">
+            <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">
+                <div class="flex items-center space-x-2 text-onenote-700 dark:text-purple-400 font-bold text-lg">
+                    <i data-lucide="file-input" class="w-6 h-6"></i>
+                    <span>Import OneNote Notebook Data</span>
+                </div>
+                <button onclick="closeImportModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                Seamlessly import notebooks, sections, or individual pages exported from Microsoft OneNote or backup files. Supported formats: <strong class="text-slate-700 dark:text-slate-200">OneNote Web JSON exports, OneNote HTML pages (.html, .htm), or zipped OneNote page packages (.zip)</strong>.
+            </p>
+
+            <!-- Drop Zone File Input -->
+            <div id="dropZone" onclick="document.getElementById('fileInput').click()" class="border-2 border-dashed border-purple-300 dark:border-purple-800 hover:border-onenote-500 bg-purple-50/50 dark:bg-purple-950/20 rounded-xl p-8 text-center cursor-pointer transition">
+                <i data-lucide="upload-cloud" class="w-10 h-10 text-onenote-600 dark:text-purple-400 mx-auto mb-2"></i>
+                <div class="text-sm font-semibold text-slate-700 dark:text-slate-200">Click to upload or drag & drop files here</div>
+                <div class="text-xs text-slate-400 mt-1">Accepts .json, .html, .htm, or exported .zip OneNote packages</div>
+                <input type="file" id="fileInput" onchange="handleFileImport(event)" accept=".json,.html,.htm,.zip" class="hidden" multiple>
+            </div>
+
+            <div class="border-t border-slate-200 dark:border-slate-700 pt-4 flex items-center justify-between">
+                <button onclick="loadSampleOneNoteData()" class="flex items-center space-x-1 text-xs text-onenote-600 dark:text-purple-400 font-medium hover:underline">
+                    <i data-lucide="sparkles" class="w-4 h-4"></i>
+                    <span>Load Sample OneNote Data</span>
+                </button>
+                <button onclick="closeImportModal()" class="px-4 py-2 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 transition">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast Container -->
+    <div id="toastContainer" class="fixed bottom-4 right-4 z-50 space-y-2 pointer-events-none"></div>
+
+    <script>
+        // Default State Initialization
+        let state = {
+            notebooks: [],
+            activeNotebookId: null,
+            activeSectionId: null,
+            activePageId: null,
+            isDrawMode: false,
+            darkMode: false
+        };
+
+        // Canvas Ink Drawing State
+        let isDrawing = false;
+        let lastX = 0;
+        let lastY = 0;
+
+        // OneNote Section Preset Accent Colors
+        const SECTION_COLORS = [
+            '#8b5cf6', // Purple
+            '#3b82f6', // Blue
+            '#06b6d4', // Teal
+            '#10b981', // Green
+            '#f59e0b', // Amber
+            '#ec4899'  // Pink
+        ];
+
+        // Active Table Focus Tracking
+        let currentActiveCell = null;
+
+        // On App Load
+        window.addEventListener('load', () => {
+            lucide.createIcons();
+            loadStateFromStorage();
+            if (!state.notebooks || state.notebooks.length === 0) {
+                initializeDefaultData();
+            }
+            renderApp();
+            setupCanvas();
+            setupWindowResize();
+            setupTableGridMatrix();
+            setupTableEventListeners();
+        });
+
+        // Local Storage Sync
+        function saveStateToStorage() {
+            try {
+                localStorage.setItem('onenote_web_state', JSON.stringify(state));
+            } catch (e) {
+                console.error("Storage save failed", e);
+            }
+        }
+
+        function loadStateFromStorage() {
+            try {
+                const stored = localStorage.getItem('onenote_web_state');
+                if (stored) {
+                    state = JSON.parse(stored);
+                }
+            } catch (e) {
+                console.error("Storage load failed", e);
+            }
+        }
+
+        // Initialize Rich Default OneNote Data
+        function initializeDefaultData() {
+            const defaultNotebook = {
+                id: 'nb_' + Date.now(),
+                name: 'Personal Notebook',
+                sections: [
+                    {
+                        id: 'sec_1',
+                        name: 'General Notes',
+                        color: SECTION_COLORS[0],
+                        pages: [
+                            {
+                                id: 'page_1',
+                                title: 'Welcome to OneNote Web',
+                                createdAt: new Date().toISOString(),
+                                updatedAt: new Date().toISOString(),
+                                tags: ['Important', 'Idea'],
+                                blocks: [
+                                    {
+                                        id: 'blk_1',
+                                        content: `<h2>🎉 Welcome to your new Digital Notebook!</h2>
+                                        <p>This web application brings the power of Microsoft OneNote to your browser with full offline persistence, drawing, free-form blocks, and standard data import/export capability.</p>
+                                        <br>
+                                        <h3>Key Features:</h3>
+                                        <ul>
+                                            <li><strong>Hierarchy:</strong> Organize into Notebooks, colored Sections, and Pages.</li>
+                                            <li><strong>Import Engine:</strong> Easily import existing OneNote HTML files, JSON dumps, or ZIP packages.</li>
+                                            <li><strong>Ink & Canvas:</strong> Click "Ink / Draw" in the toolbar to draw directly over your notes!</li>
+                                            <li><strong>Interactive To-Dos:</strong> Add actionable checkboxes anytime.</li>
+                                        </ul>`,
+                                        x: 0,
+                                        y: 0
+                                    },
+                                    {
+                                        id: 'blk_2',
+                                        content: `<h3>⚡ Quick Action Checklist</h3>
+                                        <div><input type="checkbox" checked onclick="this.setAttribute('checked', this.checked)"> Try clicking anywhere to add content</div>
+                                        <div><input type="checkbox" onclick="this.setAttribute('checked', this.checked)"> Click 'Import OneNote' in top right</div>
+                                        <div><input type="checkbox" onclick="this.setAttribute('checked', this.checked)"> Test the Ink Drawing toolbar</div>`,
+                                        x: 0,
+                                        y: 280
+                                    }
+                                ],
+                                inkData: null
+                            }
+                        ]
+                    },
+                    {
+                        id: 'sec_2',
+                        name: 'Projects & Work',
+                        color: SECTION_COLORS[1],
+                        pages: [
+                            {
+                                id: 'page_2',
+                                title: 'Q3 Project Sprint Goals',
+                                createdAt: new Date().toISOString(),
+                                updatedAt: new Date().toISOString(),
+                                tags: ['Important'],
+                                blocks: [
+                                    {
+                                        id: 'blk_3',
+                                        content: `<h2>🚀 Sprint Objectives</h2><p>Deliver core modules on schedule and conduct architecture review.</p>`,
+                                        x: 0,
+                                        y: 0
+                                    }
+                                ],
+                                inkData: null
+                            }
+                        ]
+                    }
+                ]
+            };
+
+            state.notebooks = [defaultNotebook];
+            state.activeNotebookId = defaultNotebook.id;
+            state.activeSectionId = defaultNotebook.sections[0].id;
+            state.activePageId = defaultNotebook.sections[0].pages[0].id;
+            saveStateToStorage();
+        }
+
+        // Render Master View
+        function renderApp() {
+            renderNotebookDropdown();
+            renderSections();
+            renderPages();
+            renderActivePage();
+            lucide.createIcons();
+        }
+
+        function getActiveNotebook() {
+            return state.notebooks.find(n => n.id === state.activeNotebookId) || state.notebooks[0];
+        }
+
+        function getActiveSection() {
+            const nb = getActiveNotebook();
+            if (!nb) return null;
+            return nb.sections.find(s => s.id === state.activeSectionId) || nb.sections[0];
+        }
+
+        function getActivePage() {
+            const sec = getActiveSection();
+            if (!sec) return null;
+            return sec.pages.find(p => p.id === state.activePageId) || sec.pages[0];
+        }
+
+        // Render Notebook Selector
+        function renderNotebookDropdown() {
+            const nb = getActiveNotebook();
+            if (nb) {
+                document.getElementById('currentNotebookTitle').innerText = nb.name;
+            }
+
+            const listContainer = document.getElementById('notebookList');
+            listContainer.innerHTML = state.notebooks.map(n => `
+                <div onclick="selectNotebook('${n.id}')" class="flex items-center justify-between px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer text-sm ${n.id === state.activeNotebookId ? 'bg-purple-50 dark:bg-purple-900/30 text-onenote-700 dark:text-purple-300 font-semibold' : ''}">
+                    <div class="flex items-center space-x-2 truncate">
+                        <i data-lucide="book" class="w-4 h-4 text-onenote-600 dark:text-purple-400"></i>
+                        <span class="truncate">${escapeHtml(n.name)}</span>
+                    </div>
+                    ${state.notebooks.length > 1 ? `<button onclick="event.stopPropagation(); deleteNotebook('${n.id}')" class="text-slate-400 hover:text-red-500 p-1"><i data-lucide="trash" class="w-3.5 h-3.5"></i></button>` : ''}
+                </div>
+            `).join('');
+        }
+
+        function toggleNotebookMenu() {
+            const menu = document.getElementById('notebookMenu');
+            menu.classList.toggle('hidden');
+        }
+
+        function selectNotebook(id) {
+            state.activeNotebookId = id;
+            const nb = getActiveNotebook();
+            state.activeSectionId = nb && nb.sections.length > 0 ? nb.sections[0].id : null;
+            const sec = getActiveSection();
+            state.activePageId = sec && sec.pages.length > 0 ? sec.pages[0].id : null;
+            document.getElementById('notebookMenu').classList.add('hidden');
+            saveStateToStorage();
+            renderApp();
+        }
+
+        // Render Section Tabs Column
+        function renderSections() {
+            const nb = getActiveNotebook();
+            const container = document.getElementById('sectionList');
+            if (!nb || !nb.sections) {
+                container.innerHTML = `<div class="text-xs text-slate-400 p-2">No sections</div>`;
+                return;
+            }
+
+            container.innerHTML = nb.sections.map(sec => `
+                <div onclick="selectSection('${sec.id}')" class="group flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer text-sm font-medium transition ${sec.id === state.activeSectionId ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-300/50 dark:hover:bg-slate-700/50'}">
+                    <div class="flex items-center space-x-2 truncate">
+                        <span class="w-3 h-3 rounded-full shrink-0" style="background-color: ${sec.color || '#8b5cf6'}"></span>
+                        <span class="truncate">${escapeHtml(sec.name)}</span>
+                    </div>
+                    <button onclick="event.stopPropagation(); deleteSection('${sec.id}')" class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition p-1">
+                        <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        function selectSection(id) {
+            state.activeSectionId = id;
+            const sec = getActiveSection();
+            state.activePageId = sec && sec.pages.length > 0 ? sec.pages[0].id : null;
+            saveStateToStorage();
+            renderApp();
+        }
+
+        // Render Pages List Column
+        function renderPages(filterQuery = '') {
+            const sec = getActiveSection();
+            const container = document.getElementById('pageList');
+            if (!sec || !sec.pages) {
+                container.innerHTML = `<div class="text-xs text-slate-400 p-3 text-center">No pages in section</div>`;
+                return;
+            }
+
+            let filteredPages = sec.pages;
+            if (filterQuery.trim()) {
+                const q = filterQuery.toLowerCase();
+                filteredPages = sec.pages.filter(p => p.title.toLowerCase().includes(q) || (p.tags && p.tags.some(t => t.toLowerCase().includes(q))));
+            }
+
+            container.innerHTML = filteredPages.map(page => `
+                <div onclick="selectPage('${page.id}')" class="group p-2.5 rounded-lg cursor-pointer transition border border-transparent ${page.id === state.activePageId ? 'bg-white dark:bg-slate-700/80 border-slate-200 dark:border-slate-600 shadow-sm' : 'hover:bg-slate-200/60 dark:hover:bg-slate-700/40'}">
+                    <div class="flex items-start justify-between">
+                        <h4 class="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate ${page.id === state.activePageId ? 'text-onenote-700 dark:text-purple-300' : ''}">${escapeHtml(page.title || 'Untitled Page')}</h4>
+                        <button onclick="event.stopPropagation(); deletePage('${page.id}')" class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 p-0.5 transition">
+                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                        </button>
+                    </div>
+                    <div class="flex items-center justify-between text-[11px] text-slate-400 dark:text-slate-500 mt-1">
+                        <span>${new Date(page.updatedAt || page.createdAt).toLocaleDateString([], {month:'short', day:'numeric'})}</span>
+                        ${page.tags && page.tags.length > 0 ? `<span class="bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 px-1.5 py-0.2 rounded text-[10px] font-medium">${escapeHtml(page.tags[0])}</span>` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function filterPages(val) {
+            renderPages(val);
+            lucide.createIcons();
+        }
+
+        function selectPage(id) {
+            state.activePageId = id;
+            saveStateToStorage();
+            renderActivePage();
+            lucide.createIcons();
+        }
+
+        // Render Active Page Canvas Editor
+        function renderActivePage() {
+            const page = getActivePage();
+            const workspace = document.getElementById('pageContentArea');
+            const titleInput = document.getElementById('pageTitleInput');
+            const timestamp = document.getElementById('pageTimestamp');
+            const tagsList = document.getElementById('pageTagsList');
+
+            if (!page) {
+                titleInput.value = '';
+                timestamp.innerText = '';
+                tagsList.innerHTML = '';
+                workspace.innerHTML = `<div class="text-center text-slate-400 py-12">No active page selected</div>`;
+                return;
+            }
+
+            titleInput.value = page.title || '';
+            timestamp.innerText = `Created: ${new Date(page.createdAt).toLocaleString([], {dateStyle:'medium', timeStyle:'short'})}`;
+
+            // Render Tags
+            tagsList.innerHTML = (page.tags || []).map(tag => `
+                <span class="inline-flex items-center space-x-1 bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 text-xs px-2 py-0.5 rounded-full">
+                    <span>${escapeHtml(tag)}</span>
+                    <button onclick="removePageTag('${tag}')" class="hover:text-red-500 ml-1">&times;</button>
+                </span>
+            `).join('');
+
+            // Render Floating Blocks
+            workspace.innerHTML = (page.blocks || []).map(block => `
+                <div id="${block.id}" class="note-block bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-4 mb-4 relative" style="margin-top: ${block.y || 0}px;">
+                    <div class="absolute -top-3 right-3 hidden group-hover:flex items-center space-x-1 bg-slate-200 dark:bg-slate-700 rounded px-1.5 py-0.5 text-xs text-slate-500">
+                        <button onclick="deleteBlock('${block.id}')" class="hover:text-red-500 p-0.5"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
+                    </div>
+                    <div contenteditable="true" onblur="saveBlockContent('${block.id}', this)" class="editable-content min-h-[60px] text-slate-800 dark:text-slate-100 focus:outline-none">
+                        ${block.content || ''}
+                    </div>
+                </div>
+            `).join('');
+
+            // Load Ink Layer if existing
+            loadCanvasInk(page.inkData);
+        }
+
+        // Block Updates & Canvas Interaction
+        function saveBlockContent(blockId, el) {
+            const page = getActivePage();
+            if (!page || !page.blocks) return;
+            const block = page.blocks.find(b => b.id === blockId);
+            if (block) {
+                block.content = el.innerHTML;
+                page.updatedAt = new Date().toISOString();
+                saveStateToStorage();
+                renderPages();
+            }
+        }
+
+        function handleWorkspaceClick(e) {
+            // Avoid creating container if clicked on existing container, input, or during draw mode
+            if (state.isDrawMode) return;
+            if (e.target.closest('.note-block') || e.target.closest('#pageTitleInput') || e.target.closest('#editorRibbon')) return;
+
+            const page = getActivePage();
+            if (!page) return;
+
+            // Create a new note block
+            const newBlock = {
+                id: 'blk_' + Date.now(),
+                content: '<p>Click to start typing note...</p>',
+                x: 0,
+                y: 0
+            };
+
+            if (!page.blocks) page.blocks = [];
+            page.blocks.push(newBlock);
+            page.updatedAt = new Date().toISOString();
+            saveStateToStorage();
+            renderActivePage();
+            lucide.createIcons();
+        }
+
+        function deleteBlock(blockId) {
+            const page = getActivePage();
+            if (!page) return;
+            page.blocks = page.blocks.filter(b => b.id !== blockId);
+            saveStateToStorage();
+            renderActivePage();
+            lucide.createIcons();
+        }
+
+        function updateActivePageTitle(title) {
+            const page = getActivePage();
+            if (!page) return;
+            page.title = title;
+            page.updatedAt = new Date().toISOString();
+            saveStateToStorage();
+            renderPages();
+        }
+
+        // CRUD Operations for Notebooks, Sections, Pages
+        function promptCreateNotebook() {
+            const name = prompt('Enter Notebook Name:');
+            if (!name || !name.trim()) return;
+
+            const newNb = {
+                id: 'nb_' + Date.now(),
+                name: name.trim(),
+                sections: [
+                    {
+                        id: 'sec_' + Date.now(),
+                        name: 'Quick Notes',
+                        color: SECTION_COLORS[Math.floor(Math.random() * SECTION_COLORS.length)],
+                        pages: [
+                            {
+                                id: 'page_' + Date.now(),
+                                title: 'Untitled Page',
+                                createdAt: new Date().toISOString(),
+                                updatedAt: new Date().toISOString(),
+                                tags: [],
+                                blocks: [{ id: 'blk_1', content: '<p>Start writing notes here...</p>', x: 0, y: 0 }]
+                            }
+                        ]
+                    }
+                ]
+            };
+
+            state.notebooks.push(newNb);
+            state.activeNotebookId = newNb.id;
+            state.activeSectionId = newNb.sections[0].id;
+            state.activePageId = newNb.sections[0].pages[0].id;
+
+            document.getElementById('notebookMenu').classList.add('hidden');
+            saveStateToStorage();
+            renderApp();
+            showToast('Notebook created successfully!');
+        }
+
+        function deleteNotebook(id) {
+            if (state.notebooks.length <= 1) {
+                showToast('Cannot delete the last remaining notebook.');
+                return;
+            }
+            state.notebooks = state.notebooks.filter(n => n.id !== id);
+            if (state.activeNotebookId === id) {
+                state.activeNotebookId = state.notebooks[0].id;
+                state.activeSectionId = state.notebooks[0].sections[0]?.id || null;
+                state.activePageId = state.notebooks[0].sections[0]?.pages[0]?.id || null;
+            }
+            saveStateToStorage();
+            renderApp();
+            showToast('Notebook deleted.');
+        }
+
+        function promptCreateSection() {
+            const nb = getActiveNotebook();
+            if (!nb) return;
+            const name = prompt('Enter Section Name:');
+            if (!name || !name.trim()) return;
+
+            const newSec = {
+                id: 'sec_' + Date.now(),
+                name: name.trim(),
+                color: SECTION_COLORS[nb.sections.length % SECTION_COLORS.length],
+                pages: [
+                    {
+                        id: 'page_' + Date.now(),
+                        title: 'New Page',
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString(),
+                        tags: [],
+                        blocks: [{ id: 'blk_1', content: '<p>Start typing...</p>', x: 0, y: 0 }]
+                    }
+                ]
+            };
+
+            nb.sections.push(newSec);
+            state.activeSectionId = newSec.id;
+            state.activePageId = newSec.pages[0].id;
+            saveStateToStorage();
+            renderApp();
+            showToast('New section added.');
+        }
+
+        function deleteSection(id) {
+            const nb = getActiveNotebook();
+            if (!nb || nb.sections.length <= 1) {
+                showToast('A notebook must have at least one section.');
+                return;
+            }
+            nb.sections = nb.sections.filter(s => s.id !== id);
+            if (state.activeSectionId === id) {
+                state.activeSectionId = nb.sections[0].id;
+                state.activePageId = nb.sections[0].pages[0]?.id || null;
+            }
+            saveStateToStorage();
+            renderApp();
+            showToast('Section deleted.');
+        }
+
+        function addNewPage() {
+            const sec = getActiveSection();
+            if (!sec) return;
+
+            const newPage = {
+                id: 'page_' + Date.now(),
+                title: 'Untitled Page',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                tags: [],
+                blocks: [
+                    {
+                        id: 'blk_' + Date.now(),
+                        content: '<p>Type notes or click anywhere...</p>',
+                        x: 0,
+                        y: 0
+                    }
+                ]
+            };
+
+            sec.pages.unshift(newPage);
+            state.activePageId = newPage.id;
+            saveStateToStorage();
+            renderApp();
+            showToast('Page created.');
+        }
+
+        function deletePage(id) {
+            const sec = getActiveSection();
+            if (!sec || sec.pages.length <= 1) {
+                showToast('A section must have at least one page.');
+                return;
+            }
+            sec.pages = sec.pages.filter(p => p.id !== id);
+            if (state.activePageId === id) {
+                state.activePageId = sec.pages[0].id;
+            }
+            saveStateToStorage();
+            renderApp();
+            showToast('Page deleted.');
+        }
+
+        // Text Formatting Handlers
+        function formatText(cmd, value = null) {
+            document.execCommand(cmd, false, value);
+        }
+
+        function formatHeading(tag) {
+            if (!tag) return;
+            document.execCommand('formatBlock', false, `<${tag}>`);
+        }
+
+        function insertCheckbox() {
+            const html = `<div><input type="checkbox" onclick="this.setAttribute('checked', this.checked)"> &nbsp;New Task Item</div>`;
+            document.execCommand('insertHTML', false, html);
+        }
+
+        // OneNote Interactive Table Menu Dropdown & Grid Picker Logic
+        function setupTableGridMatrix() {
+            const matrixContainer = document.getElementById('tableGridMatrix');
+            if (!matrixContainer) return;
+
+            let html = '';
+            for (let r = 1; r <= 6; r++) {
+                for (let c = 1; c <= 6; c++) {
+                    html += `<div class="grid-cell" data-row="${r}" data-col="${c}" onmouseover="highlightGrid(${r}, ${c})" onclick="insertTableGrid(${r}, ${c})"></div>`;
+                }
+            }
+            matrixContainer.innerHTML = html;
+        }
+
+        function toggleTableMenu(e) {
+            e.stopPropagation();
+            const menu = document.getElementById('tableDropdownMenu');
+            menu.classList.toggle('hidden');
+        }
+
+        function highlightGrid(rows, cols) {
+            document.getElementById('gridDimensionsLabel').innerText = `${rows} x ${cols}`;
+            const cells = document.querySelectorAll('#tableGridMatrix .grid-cell');
+            cells.forEach(cell => {
+                const r = parseInt(cell.dataset.row);
+                const c = parseInt(cell.dataset.col);
+                if (r <= rows && c <= cols) {
+                    cell.classList.add('active');
+                } else {
+                    cell.classList.remove('active');
+                }
+            });
+        }
+
+        function resetGridHover() {
+            document.getElementById('gridDimensionsLabel').innerText = `1 x 1`;
+            const cells = document.querySelectorAll('#tableGridMatrix .grid-cell');
+            cells.forEach(cell => cell.classList.remove('active'));
+        }
+
+        function insertTableGrid(rows, cols) {
+            let tableHtml = `<table class="onenote-table"><thead><tr>`;
+            for (let c = 1; c <= cols; c++) {
+                tableHtml += `<th>Header ${c}</th>`;
+            }
+            tableHtml += `</tr></thead><tbody>`;
+
+            for (let r = 1; r <= rows; r++) {
+                tableHtml += `<tr>`;
+                for (let c = 1; c <= cols; c++) {
+                    tableHtml += `<td>Data ${r}-${c}</td>`;
+                }
+                tableHtml += `</tr>`;
+            }
+            tableHtml += `</tbody></table><br>`;
+
+            document.execCommand('insertHTML', false, tableHtml);
+            document.getElementById('tableDropdownMenu').classList.add('hidden');
+            showToast(`Inserted ${rows}x${cols} Table`);
+        }
+
+        // Table Keyboard & Floating Toolbar Listeners
+        function setupTableEventListeners() {
+            // Close Table menu on outside click
+            document.addEventListener('click', (e) => {
+                const menu = document.getElementById('tableDropdownMenu');
+                if (menu && !menu.contains(e.target) && !e.target.closest('button[title="Table Tools"]')) {
+                    menu.classList.add('hidden');
+                }
+            });
+
+            // Selection and focus listener for showing Table Quick Toolbar & handling Tab key
+            document.addEventListener('selectionchange', handleTableSelection);
+            
+            document.getElementById('pageWorkspace').addEventListener('keydown', handleTableKeyDown);
+        }
+
+        function handleTableSelection() {
+            const sel = window.getSelection();
+            if (!sel.rangeCount) return;
+
+            let node = sel.anchorNode;
+            if (node && node.nodeType === 3) node = node.parentNode;
+
+            const cell = node ? node.closest('td, th') : null;
+            const quickBar = document.getElementById('tableQuickBar');
+
+            if (cell) {
+                currentActiveCell = cell;
+                const rect = cell.getBoundingClientRect();
+                const workspaceRect = document.getElementById('pageWorkspace').getBoundingClientRect();
+
+                quickBar.style.top = `${rect.top - workspaceRect.top - 38 + document.getElementById('pageWorkspace').scrollTop}px`;
+                quickBar.style.left = `${Math.max(10, rect.left - workspaceRect.left)}px`;
+                quickBar.classList.remove('hidden');
+            } else {
+                if (quickBar && !quickBar.contains(document.activeElement)) {
+                    quickBar.classList.add('hidden');
+                }
+            }
+        }
+
+        // OneNote Tab Key Navigation in Tables (Tab = Next Cell / Add Row on last cell)
+        function handleTableKeyDown(e) {
+            if (e.key === 'Tab') {
+                const sel = window.getSelection();
+                if (!sel.rangeCount) return;
+                let node = sel.anchorNode;
+                if (node && node.nodeType === 3) node = node.parentNode;
+
+                const cell = node ? node.closest('td, th') : null;
+                if (!cell) return;
+
+                e.preventDefault(); // Prevent default focus jump
+                const table = cell.closest('table');
+                const allCells = Array.from(table.querySelectorAll('th, td'));
+                const currentIndex = allCells.indexOf(cell);
+
+                if (e.shiftKey) {
+                    // Previous cell
+                    if (currentIndex > 0) {
+                        focusCell(allCells[currentIndex - 1]);
+                    }
+                } else {
+                    // Next cell
+                    if (currentIndex < allCells.length - 1) {
+                        focusCell(allCells[currentIndex + 1]);
+                    } else {
+                        // At last cell -> Create a new Row automatically! (OneNote Signature feature)
+                        const colsCount = table.rows[0].cells.length;
+                        const tbody = table.querySelector('tbody') || table;
+                        const newRow = document.createElement('tr');
+                        for (let i = 0; i < colsCount; i++) {
+                            const td = document.createElement('td');
+                            td.innerHTML = '&nbsp;';
+                            newRow.appendChild(td);
+                        }
+                        tbody.appendChild(newRow);
+                        focusCell(newRow.cells[0]);
+                        showToast('Added new table row');
+                    }
+                }
+            }
+        }
+
+        function focusCell(cell) {
+            const range = document.createRange();
+            const sel = window.getSelection();
+            range.selectNodeContents(cell);
+            range.collapse(false); // Move caret to end
+            sel.removeAllRanges();
+            sel.addRange(range);
+            cell.focus();
+        }
+
+        // Table Manipulations
+        function addTableRow(where = 'below') {
+            if (!currentActiveCell) {
+                showToast('Click inside a table cell first');
+                return;
+            }
+            const row = currentActiveCell.closest('tr');
+            const table = row.closest('table');
+            const colsCount = row.cells.length;
+            const newRow = document.createElement('tr');
+
+            for (let i = 0; i < colsCount; i++) {
+                const cellType = row.cells[i].tagName.toLowerCase();
+                const newCell = document.createElement(cellType === 'th' ? 'td' : cellType);
+                newCell.innerHTML = '&nbsp;';
+                newRow.appendChild(newCell);
+            }
+
+            if (where === 'above') {
+                row.parentNode.insertBefore(newRow, row);
+            } else {
+                row.parentNode.insertBefore(newRow, row.nextSibling);
+            }
+            focusCell(newRow.cells[0]);
+            showToast('Row added');
+        }
+
+        function addTableColumn(where = 'right') {
+            if (!currentActiveCell) {
+                showToast('Click inside a table cell first');
+                return;
+            }
+            const colIndex = currentActiveCell.cellIndex;
+            const table = currentActiveCell.closest('table');
+
+            Array.from(table.rows).forEach(row => {
+                const isHeader = row.parentNode.tagName.toLowerCase() === 'thead' || row.cells[0].tagName.toLowerCase() === 'th';
+                const newCell = document.createElement(isHeader ? 'th' : 'td');
+                newCell.innerHTML = isHeader ? 'Header' : '&nbsp;';
+
+                if (where === 'left') {
+                    row.insertBefore(newCell, row.cells[colIndex]);
+                } else {
+                    row.insertBefore(newCell, row.cells[colIndex + 1] || null);
+                }
+            });
+            showToast('Column added');
+        }
+
+        function deleteTableRow() {
+            if (!currentActiveCell) return;
+            const row = currentActiveCell.closest('tr');
+            const table = row.closest('table');
+            if (table.rows.length <= 1) {
+                table.remove();
+                document.getElementById('tableQuickBar').classList.add('hidden');
+                showToast('Table deleted');
+            } else {
+                row.remove();
+                showToast('Row deleted');
+            }
+        }
+
+        function deleteTableColumn() {
+            if (!currentActiveCell) return;
+            const colIndex = currentActiveCell.cellIndex;
+            const table = currentActiveCell.closest('table');
+
+            Array.from(table.rows).forEach(row => {
+                if (row.cells[colIndex]) {
+                    row.cells[colIndex].remove();
+                }
+            });
+
+            if (table.rows[0].cells.length === 0) {
+                table.remove();
+                document.getElementById('tableQuickBar').classList.add('hidden');
+            }
+            showToast('Column deleted');
+        }
+
+        function deleteCurrentTable() {
+            if (!currentActiveCell) {
+                showToast('Click inside a table to delete');
+                return;
+            }
+            const table = currentActiveCell.closest('table');
+            if (table) {
+                table.remove();
+                document.getElementById('tableQuickBar').classList.add('hidden');
+                showToast('Table removed');
+            }
+        }
+
+        function applyCellShading(color) {
+            if (!currentActiveCell) return;
+            currentActiveCell.style.backgroundColor = color;
+            showToast('Cell shaded');
+        }
+
+        // Page Tags
+        function addPageTag(tag) {
+            const page = getActivePage();
+            if (!page) return;
+            if (!page.tags) page.tags = [];
+            if (!page.tags.includes(tag)) {
+                page.tags.push(tag);
+                saveStateToStorage();
+                renderActivePage();
+                renderPages();
+            }
+        }
+
+        function removePageTag(tag) {
+            const page = getActivePage();
+            if (!page || !page.tags) return;
+            page.tags = page.tags.filter(t => t !== tag);
+            saveStateToStorage();
+            renderActivePage();
+            renderPages();
+        }
+
+        // Ink / Drawing Layer Logic
+        function setupCanvas() {
+            const canvas = document.getElementById('drawingCanvas');
+            const workspace = document.getElementById('pageWorkspace');
+
+            canvas.width = workspace.scrollWidth;
+            canvas.height = workspace.scrollHeight;
+
+            const ctx = canvas.getContext('2d');
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            canvas.addEventListener('mousedown', startDrawing);
+            canvas.addEventListener('mousemove', draw);
+            canvas.addEventListener('mouseup', stopDrawing);
+            canvas.addEventListener('mouseout', stopDrawing);
+
+            // Touch events for tablet/mobile drawing
+            canvas.addEventListener('touchstart', (e) => {
+                const touch = e.touches[0];
+                const rect = canvas.getBoundingClientRect();
+                lastX = touch.clientX - rect.left;
+                lastY = touch.clientY - rect.top;
+                isDrawing = true;
+            });
+            canvas.addEventListener('touchmove', (e) => {
+                if (!isDrawing) return;
+                e.preventDefault();
+                const touch = e.touches[0];
+                const rect = canvas.getBoundingClientRect();
+                const ctx = canvas.getContext('2d');
+                ctx.beginPath();
+                ctx.moveTo(lastX, lastY);
+                ctx.lineTo(touch.clientX - rect.left, touch.clientY - rect.top);
+                ctx.strokeStyle = document.getElementById('penColor').value;
+                ctx.lineWidth = document.getElementById('penSize').value;
+                ctx.stroke();
+                lastX = touch.clientX - rect.left;
+                lastY = touch.clientY - rect.top;
+            });
+            canvas.addEventListener('touchend', stopDrawing);
+        }
+
+        function setupWindowResize() {
+            window.addEventListener('resize', () => {
+                const canvas = document.getElementById('drawingCanvas');
+                const workspace = document.getElementById('pageWorkspace');
+                if (canvas && workspace) {
+                    canvas.width = workspace.scrollWidth;
+                    canvas.height = workspace.scrollHeight;
+                    const page = getActivePage();
+                    if (page && page.inkData) {
+                        loadCanvasInk(page.inkData);
+                    }
+                }
+            });
+        }
+
+        function toggleDrawMode() {
+            state.isDrawMode = !state.isDrawMode;
+            const btn = document.getElementById('drawModeBtn');
+            const tools = document.getElementById('drawTools');
+            const canvas = document.getElementById('drawingCanvas');
+
+            if (state.isDrawMode) {
+                btn.classList.add('bg-purple-100', 'dark:bg-purple-900/50', 'text-onenote-700', 'dark:text-purple-300');
+                tools.classList.remove('hidden');
+                canvas.classList.remove('pointer-events-none');
+                canvas.classList.add('cursor-crosshair');
+            } else {
+                btn.classList.remove('bg-purple-100', 'dark:bg-purple-900/50', 'text-onenote-700', 'dark:text-purple-300');
+                tools.classList.add('hidden');
+                canvas.classList.add('pointer-events-none');
+                canvas.classList.remove('cursor-crosshair');
+            }
+        }
+
+        function startDrawing(e) {
+            if (!state.isDrawMode) return;
+            isDrawing = true;
+            const canvas = document.getElementById('drawingCanvas');
+            const rect = canvas.getBoundingClientRect();
+            lastX = e.clientX - rect.left;
+            lastY = e.clientY - rect.top;
+        }
+
+        function draw(e) {
+            if (!isDrawing || !state.isDrawMode) return;
+            const canvas = document.getElementById('drawingCanvas');
+            const ctx = canvas.getContext('2d');
+            const rect = canvas.getBoundingClientRect();
+            const currentX = e.clientX - rect.left;
+            const currentY = e.clientY - rect.top;
+
+            ctx.beginPath();
+            ctx.moveTo(lastX, lastY);
+            ctx.lineTo(currentX, currentY);
+            ctx.strokeStyle = document.getElementById('penColor').value;
+            ctx.lineWidth = document.getElementById('penSize').value;
+            ctx.stroke();
+
+            lastX = currentX;
+            lastY = currentY;
+        }
+
+        function stopDrawing() {
+            if (!isDrawing) return;
+            isDrawing = false;
+            // Save ink to current page state
+            const canvas = document.getElementById('drawingCanvas');
+            const page = getActivePage();
+            if (page) {
+                page.inkData = canvas.toDataURL();
+                saveStateToStorage();
+            }
+        }
+
+        function clearCanvas() {
+            const canvas = document.getElementById('drawingCanvas');
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const page = getActivePage();
+            if (page) {
+                page.inkData = null;
+                saveStateToStorage();
+            }
+        }
+
+        function loadCanvasInk(dataUrl) {
+            const canvas = document.getElementById('drawingCanvas');
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if (!dataUrl) return;
+
+            const img = new Image();
+            img.onload = function() {
+                ctx.drawImage(img, 0, 0);
+            };
+            img.src = dataUrl;
+        }
+
+        // Data Import Modal & Processors
+        function openImportModal() {
+            document.getElementById('importModal').classList.remove('hidden');
+        }
+
+        function closeImportModal() {
+            document.getElementById('importModal').classList.add('hidden');
+        }
+
+        async function handleFileImport(event) {
+            const files = event.target.files;
+            if (!files || files.length === 0) return;
+
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                const ext = file.name.split('.').pop().toLowerCase();
+
+                if (ext === 'json') {
+                    await parseJsonImport(file);
+                } else if (ext === 'html' || ext === 'htm') {
+                    await parseHtmlImport(file);
+                } else if (ext === 'zip') {
+                    await parseZipImport(file);
+                }
+            }
+
+            closeImportModal();
+            renderApp();
+            showToast('OneNote data imported successfully!');
+        }
+
+        // Parser for OneNote JSON structure
+        function parseJsonImport(file) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const importedData = JSON.parse(e.target.result);
+                        if (importedData.notebooks) {
+                            // Full Notebook backup
+                            state.notebooks.push(...importedData.notebooks);
+                        } else if (importedData.sections) {
+                            // Single Notebook
+                            state.notebooks.push(importedData);
+                        } else if (importedData.pages) {
+                            // Section
+                            const nb = getActiveNotebook();
+                            if (nb) nb.sections.push(importedData);
+                        }
+                        saveStateToStorage();
+                    } catch (err) {
+                        showToast('Failed to parse JSON file.');
+                    }
+                    resolve();
+                };
+                reader.readAsText(file);
+            });
+        }
+
+        // Parser for exported OneNote HTML file
+        function parseHtmlImport(file) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const htmlText = e.target.result;
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(htmlText, 'text/html');
+
+                    const pageTitle = doc.title || doc.querySelector('h1')?.innerText || file.name.replace(/\.[^/.]+$/, "");
+                    const bodyContent = doc.body ? doc.body.innerHTML : htmlText;
+
+                    const sec = getActiveSection();
+                    if (sec) {
+                        sec.pages.unshift({
+                            id: 'page_' + Date.now() + Math.random().toString(36).substr(2, 4),
+                            title: pageTitle,
+                            createdAt: new Date().toISOString(),
+                            updatedAt: new Date().toISOString(),
+                            tags: ['Imported OneNote'],
+                            blocks: [
+                                {
+                                    id: 'blk_' + Date.now(),
+                                    content: bodyContent,
+                                    x: 0,
+                                    y: 0
+                                }
+                            ]
+                        });
+                        saveStateToStorage();
+                    }
+                    resolve();
+                };
+                reader.readAsText(file);
+            });
+        }
+
+        // Parser for Exported OneNote ZIP Archives
+        async function parseZipImport(file) {
+            try {
+                const zip = await JSZip.loadAsync(file);
+                const importedPages = [];
+
+                for (let filename in zip.files) {
+                    if (filename.endsWith('.html') || filename.endsWith('.htm')) {
+                        const htmlContent = await zip.files[filename].async('string');
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(htmlContent, 'text/html');
+                        const pageTitle = doc.title || filename.replace(/^.*[\\\/]/, '').replace(/\.[^/.]+$/, "");
+
+                        importedPages.push({
+                            id: 'page_' + Date.now() + Math.random().toString(36).substr(2, 4),
+                            title: pageTitle,
+                            createdAt: new Date().toISOString(),
+                            updatedAt: new Date().toISOString(),
+                            tags: ['OneNote Archive'],
+                            blocks: [
+                                {
+                                    id: 'blk_' + Date.now(),
+                                    content: doc.body ? doc.body.innerHTML : htmlContent,
+                                    x: 0,
+                                    y: 0
+                                }
+                            ]
+                        });
+                    }
+                }
+
+                if (importedPages.length > 0) {
+                    const nb = getActiveNotebook();
+                    nb.sections.push({
+                        id: 'sec_' + Date.now(),
+                        name: file.name.replace(/\.[^/.]+$/, ""),
+                        color: SECTION_COLORS[Math.floor(Math.random() * SECTION_COLORS.length)],
+                        pages: importedPages
+                    });
+                    saveStateToStorage();
+                }
+            } catch (err) {
+                showToast('Error parsing ZIP file.');
+            }
+        }
+
+        // Load Pre-populated Sample OneNote Data
+        function loadSampleOneNoteData() {
+            const sampleNotebook = {
+                id: 'nb_sample_' + Date.now(),
+                name: 'Imported: Work & Project Master',
+                sections: [
+                    {
+                        id: 'sec_sample_1',
+                        name: 'Client Discovery',
+                        color: SECTION_COLORS[1],
+                        pages: [
+                            {
+                                id: 'page_sample_1',
+                                title: 'System Architecture Requirements',
+                                createdAt: new Date().toISOString(),
+                                updatedAt: new Date().toISOString(),
+                                tags: ['Important', 'Technical'],
+                                blocks: [
+                                    {
+                                        id: 'blk_s1',
+                                        content: `<h2>📋 Discovery Notes</h2>
+                                        <p>Summary of technical requirements gathered during client discovery session:</p>
+                                        <ul>
+                                            <li>Client requires single-page fluid user interface</li>
+                                            <li>Strict offline capability with localStorage or local DB</li>
+                                            <li>OneNote style tab navigation & section colors</li>
+                                        </ul>
+                                        <br>
+                                        <h3>Action Items</h3>
+                                        <div><input type="checkbox" checked onclick="this.setAttribute('checked', this.checked)"> Draft software specification</div>
+                                        <div><input type="checkbox" onclick="this.setAttribute('checked', this.checked)"> Design responsive grid components</div>`,
+                                        x: 0,
+                                        y: 0
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            };
+
+            state.notebooks.push(sampleNotebook);
+            state.activeNotebookId = sampleNotebook.id;
+            state.activeSectionId = sampleNotebook.sections[0].id;
+            state.activePageId = sampleNotebook.sections[0].pages[0].id;
+
+            closeImportModal();
+            saveStateToStorage();
+            renderApp();
+            showToast('Loaded sample OneNote notebook!');
+        }
+
+        // Export Notebook JSON
+        function exportCurrentNotebook() {
+            const nb = getActiveNotebook();
+            if (!nb) return;
+
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(nb, null, 2));
+            const downloadAnchor = document.createElement('a');
+            downloadAnchor.setAttribute("href", dataStr);
+            downloadAnchor.setAttribute("download", `${nb.name.replace(/\s+/g, '_')}_onenote_export.json`);
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+
+            showToast('Notebook exported to JSON.');
+        }
+
+        // Global Search Bar Handler
+        function handleSearch(query) {
+            if (!query.trim()) {
+                renderPages();
+                return;
+            }
+            renderPages(query);
+        }
+
+        // Dark Mode Toggle
+        function toggleDarkMode() {
+            state.darkMode = !state.darkMode;
+            if (state.darkMode) {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+            saveStateToStorage();
+        }
+
+        // Helper: Toast Notifications
+        function showToast(message) {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = 'bg-slate-900 text-white dark:bg-purple-900 dark:text-purple-100 text-xs px-4 py-2.5 rounded-lg shadow-xl flex items-center space-x-2 border border-slate-700 transition transform translate-y-2 opacity-0 pointer-events-auto';
+            toast.innerHTML = `<i data-lucide="info" class="w-4 h-4 text-purple-400"></i><span>${escapeHtml(message)}</span>`;
+            
+            container.appendChild(toast);
+            lucide.createIcons();
+
+            setTimeout(() => {
+                toast.classList.remove('translate-y-2', 'opacity-0');
+            }, 10);
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // Escape HTML
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+    </script>
+</body>
+</html>
