@@ -12,6 +12,10 @@ const microsoftTenantId = process.env.MS_TENANT_ID || 'common';
 const microsoftRedirectUri = process.env.MS_REDIRECT_URI || `http://localhost:${port}/api/microsoft/callback`;
 const microsoftAuthority = `https://login.microsoftonline.com/${encodeURIComponent(microsoftTenantId)}/oauth2/v2.0`;
 const microsoftScopes = 'openid profile offline_access User.Read Notes.Read';
+const microsoftMissingSettings = [
+    !microsoftClientId && 'MS_CLIENT_ID',
+    !microsoftClientSecret && 'MS_CLIENT_SECRET'
+].filter(Boolean);
 const microsoftSessions = new Map();
 const microsoftAuthRequests = new Map();
 
@@ -205,7 +209,12 @@ function readJsonBody(req, limit = 1024 * 1024) {
 
 async function handleMicrosoftApi(req, res, url) {
     if (url.pathname === '/api/microsoft/status' && req.method === 'GET') {
-        return sendJson(res, 200, { configured: Boolean(microsoftClientId && microsoftClientSecret), connected: Boolean(getMicrosoftSession(req)) });
+        return sendJson(res, 200, {
+            configured: microsoftMissingSettings.length === 0,
+            connected: Boolean(getMicrosoftSession(req)),
+            redirectUri: microsoftRedirectUri,
+            missingSettings: microsoftMissingSettings
+        });
     }
     if (url.pathname === '/api/microsoft/connect' && req.method === 'GET') {
         if (!microsoftClientId || !microsoftClientSecret) return sendJson(res, 503, { error: 'Microsoft import is not configured on this server' });
@@ -279,4 +288,9 @@ const server = http.createServer(async (req, res) => {
 server.listen(port, () => {
     console.log(`OneNote Web listening on http://localhost:${port}`);
     console.log(`Saving application state to ${dataFile}`);
+    if (microsoftMissingSettings.length) {
+        console.warn(`Microsoft OneNote import disabled: set ${microsoftMissingSettings.join(' and ')} and restart the server.`);
+    } else {
+        console.log(`Microsoft OneNote callback URI: ${microsoftRedirectUri}`);
+    }
 });

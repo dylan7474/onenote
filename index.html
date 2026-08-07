@@ -2032,10 +2032,15 @@
             try {
                 const status = await microsoftApi('status');
                 if (!status.configured) {
-                    statusText.textContent = 'Direct import is not configured on this server.';
+                    const missing = Array.isArray(status.missingSettings) && status.missingSettings.length
+                        ? ` Missing server setting${status.missingSettings.length === 1 ? '' : 's'}: ${status.missingSettings.join(', ')}.`
+                        : '';
+                    statusText.textContent = `Direct import is disabled.${missing} Ask the server administrator to configure Microsoft Entra credentials and restart the server.`;
+                    statusText.title = `Required Microsoft Entra redirect URI: ${status.redirectUri || `${location.origin}/api/microsoft/callback`}`;
                     connectButton.classList.add('hidden');
                     picker.classList.add('hidden');
                 } else if (!status.connected) {
+                    statusText.title = `Microsoft Entra redirect URI: ${status.redirectUri}`;
                     statusText.textContent = 'Connect with Microsoft to choose notebooks.';
                     connectButton.classList.remove('hidden');
                     picker.classList.add('hidden');
