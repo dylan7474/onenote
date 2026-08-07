@@ -427,7 +427,7 @@
 
     <!-- Import OneNote Data Modal -->
     <div id="importModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <div class="bg-white dark:bg-slate-800 rounded-xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-700 space-y-5">
+        <div class="bg-white dark:bg-slate-800 rounded-xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-700 space-y-5 max-h-[90vh] overflow-y-auto">
             <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">
                 <div class="flex items-center space-x-2 text-onenote-700 dark:text-purple-400 font-bold text-lg">
                     <i data-lucide="file-input" class="w-6 h-6"></i>
@@ -439,8 +439,27 @@
             </div>
 
             <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                Seamlessly import notebooks, sections, or individual pages exported from Microsoft OneNote or backup files. Supported formats: <strong class="text-slate-700 dark:text-slate-200">OneNote Web JSON exports, OneNote HTML pages (.html, .htm), or zipped OneNote page packages (.zip)</strong>.
+                Import directly from your Microsoft account, or upload an exported backup. Direct import uses read-only Microsoft Graph access and copies the selected notebooks into this application.
             </p>
+
+            <section class="rounded-xl border border-purple-200 dark:border-purple-800 bg-purple-50/60 dark:bg-purple-950/20 p-4 space-y-3" aria-labelledby="microsoftImportHeading">
+                <div class="flex items-start justify-between gap-4">
+                    <div>
+                        <h3 id="microsoftImportHeading" class="text-sm font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2"><i data-lucide="cloud" class="w-4 h-4 text-onenote-600"></i>Microsoft OneNote</h3>
+                        <p id="microsoftImportStatus" class="text-xs text-slate-500 dark:text-slate-400 mt-1">Checking connection…</p>
+                    </div>
+                    <button id="microsoftConnectButton" onclick="connectMicrosoftOneNote()" class="shrink-0 px-3 py-2 bg-onenote-600 hover:bg-onenote-700 text-white text-xs font-semibold rounded-lg">Connect Microsoft</button>
+                </div>
+                <div id="microsoftNotebookPicker" class="hidden space-y-3">
+                    <div id="microsoftNotebookList" class="max-h-44 overflow-y-auto space-y-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2"></div>
+                    <div class="flex items-center justify-between gap-3">
+                        <button onclick="disconnectMicrosoftOneNote()" class="text-xs text-slate-500 hover:text-red-600">Disconnect</button>
+                        <button id="microsoftImportButton" onclick="importMicrosoftOneNote()" class="px-3 py-2 bg-onenote-600 hover:bg-onenote-700 disabled:opacity-50 text-white text-xs font-semibold rounded-lg">Import selected notebooks</button>
+                    </div>
+                </div>
+            </section>
+
+            <div class="flex items-center gap-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400"><span class="h-px bg-slate-200 dark:bg-slate-700 flex-1"></span>Or import files<span class="h-px bg-slate-200 dark:bg-slate-700 flex-1"></span></div>
 
             <!-- Drop Zone File Input -->
             <div id="dropZone" onclick="document.getElementById('fileInput').click()" class="border-2 border-dashed border-purple-300 dark:border-purple-800 hover:border-onenote-500 bg-purple-50/50 dark:bg-purple-950/20 rounded-xl p-8 text-center cursor-pointer transition">
@@ -519,6 +538,14 @@
             setupWindowResize();
             setupTableGridMatrix();
             setupTableEventListeners();
+            const microsoftResult = new URLSearchParams(location.search).get('microsoft');
+            if (microsoftResult) {
+                history.replaceState({}, '', location.pathname);
+                if (microsoftResult === 'connected') {
+                    openImportModal();
+                    showToast('Microsoft OneNote connected.');
+                } else showToast('Microsoft sign-in was not completed.');
+            }
         });
 
         function chooseAttachments() {
@@ -1984,6 +2011,93 @@
         // Data Import Modal & Processors
         function openImportModal() {
             document.getElementById('importModal').classList.remove('hidden');
+            refreshMicrosoftImport();
+        }
+
+        async function microsoftApi(path, options) {
+            const response = await fetch(`/api/microsoft/${path}`, options);
+            const value = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(value.error || `Request failed (${response.status})`);
+            return value;
+        }
+
+        function connectMicrosoftOneNote() {
+            window.location.assign('/api/microsoft/connect');
+        }
+
+        async function refreshMicrosoftImport() {
+            const statusText = document.getElementById('microsoftImportStatus');
+            const connectButton = document.getElementById('microsoftConnectButton');
+            const picker = document.getElementById('microsoftNotebookPicker');
+            try {
+                const status = await microsoftApi('status');
+                if (!status.configured) {
+                    statusText.textContent = 'Direct import is not configured on this server.';
+                    connectButton.classList.add('hidden');
+                    picker.classList.add('hidden');
+                } else if (!status.connected) {
+                    statusText.textContent = 'Connect with Microsoft to choose notebooks.';
+                    connectButton.classList.remove('hidden');
+                    picker.classList.add('hidden');
+                } else {
+                    statusText.textContent = 'Connected. Select the notebooks to copy.';
+                    connectButton.classList.add('hidden');
+                    picker.classList.remove('hidden');
+                    const result = await microsoftApi('notebooks');
+                    document.getElementById('microsoftNotebookList').innerHTML = result.notebooks.length ? result.notebooks.map(notebook => `
+                        <label class="flex items-center gap-2 p-2 rounded hover:bg-slate-50 dark:hover:bg-slate-800 text-xs cursor-pointer">
+                            <input type="checkbox" class="microsoft-notebook-choice accent-purple-700" value="${escapeHtml(notebook.id)}">
+                            <i data-lucide="notebook" class="w-4 h-4 text-onenote-600"></i>
+                            <span class="font-medium text-slate-700 dark:text-slate-200">${escapeHtml(notebook.displayName || 'Untitled notebook')}</span>
+                        </label>`).join('') : '<p class="p-2 text-xs text-slate-500">No OneNote notebooks were found in this account.</p>';
+                    lucide.createIcons();
+                }
+            } catch (error) {
+                statusText.textContent = error.message;
+                connectButton.classList.remove('hidden');
+                picker.classList.add('hidden');
+            }
+        }
+
+        async function disconnectMicrosoftOneNote() {
+            await microsoftApi('disconnect', { method: 'POST' });
+            refreshMicrosoftImport();
+        }
+
+        async function importMicrosoftOneNote() {
+            const notebookIds = Array.from(document.querySelectorAll('.microsoft-notebook-choice:checked'), input => input.value);
+            if (!notebookIds.length) return showToast('Select at least one Microsoft notebook.');
+            const button = document.getElementById('microsoftImportButton');
+            button.disabled = true;
+            button.textContent = 'Importing pages…';
+            try {
+                const result = await microsoftApi('import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notebookIds }) });
+                for (const notebook of result.notebooks) {
+                    for (const section of notebook.sections || []) {
+                        for (const page of section.pages || []) {
+                            for (const block of page.blocks || []) {
+                                const doc = new DOMParser().parseFromString(block.content, 'text/html');
+                                block.content = doc.body?.innerHTML || block.content;
+                            }
+                        }
+                    }
+                }
+                state.notebooks.push(...result.notebooks);
+                if (result.notebooks[0]) {
+                    state.activeNotebookId = result.notebooks[0].id;
+                    state.activeSectionId = result.notebooks[0].sections[0]?.id || null;
+                    state.activePageId = result.notebooks[0].sections[0]?.pages[0]?.id || null;
+                }
+                saveStateToStorage();
+                closeImportModal();
+                renderApp();
+                showToast(`Imported ${result.notebooks.length} Microsoft notebook${result.notebooks.length === 1 ? '' : 's'}.`);
+            } catch (error) {
+                showToast(`Microsoft import failed: ${error.message}`);
+            } finally {
+                button.disabled = false;
+                button.textContent = 'Import selected notebooks';
+            }
         }
 
         function closeImportModal() {

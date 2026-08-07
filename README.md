@@ -5,9 +5,9 @@ browser and automatically persists the complete notebook state to the server.
 
 > [!IMPORTANT]
 > This is an independent project, not a Microsoft product. “OneNote” is a
-> Microsoft trademark. The application does **not** currently read native
-> `.one` files or connect to Microsoft 365/OneDrive. “Parity” below means a
-> similar user workflow, not file-format or service compatibility.
+> Microsoft trademark. The application does **not** read native `.one` files.
+> Its optional Microsoft 365 connection copies supported OneNote content through
+> Microsoft Graph; “parity” below does not imply native file compatibility.
 
 ## Run locally
 
@@ -21,6 +21,31 @@ PORT=3020 DATA_FILE=./data/state.json node server.js
 Open <http://localhost:3020>. Do not open `index.html` directly: the application
 uses the server's `/api/state` endpoint to save and restore data. `DATA_FILE`
 defaults to `./data/state.json`, and request bodies are limited to 50 MiB.
+
+## Import directly from Microsoft OneNote
+
+Register a **Web** application in Microsoft Entra ID, add the delegated
+Microsoft Graph permissions `Notes.Read` and `User.Read`, and register the
+redirect URI shown below. Then start the server with its application credentials:
+
+```bash
+MS_CLIENT_ID="your-application-id" \
+MS_CLIENT_SECRET="your-client-secret" \
+MS_TENANT_ID="common" \
+MS_REDIRECT_URI="http://localhost:3020/api/microsoft/callback" \
+PORT=3020 node server.js
+```
+
+Open **Import OneNote → Connect Microsoft**, consent to read-only notebook
+access, select one or more notebooks, and choose **Import selected notebooks**.
+The importer follows Microsoft Graph pagination, includes nested section groups
+(flattened into section names), preserves page levels and timestamps, and copies
+page HTML into local state. It does not continuously synchronize later changes.
+OAuth access and refresh tokens are held only in server memory, never saved in
+the notebook state or exposed to browser JavaScript; restarting the server signs
+connected Microsoft accounts out. For a deployed HTTPS instance, set
+`MS_REDIRECT_URI` to the exact HTTPS callback registered in Entra ID. Use a
+tenant ID instead of `common` if sign-in should be limited to one organization.
 
 ## Using file attachments
 
@@ -77,6 +102,8 @@ specific legacy desktop release.
 - A pen layer with selectable color and width, saved with the page.
 - JSON notebook export; JSON, HTML/HTM, and ZIP-of-HTML import, preserving
   supported OneNote subpage levels from JSON metadata and ZIP folders.
+- Optional read-only Microsoft Graph connection for selecting and copying live
+  Microsoft 365 OneNote notebooks, sections, section groups, pages, and HTML.
 - Debounced server-side JSON persistence, including a one-time migration from
   the older browser-local state.
 
@@ -95,10 +122,10 @@ implementation exists; **Missing** = no implementation yet.
 | Search | **Partial** | The “global” search currently filters only titles/tags in the active section. Add indexed full-text and OCR search across all notebooks, result snippets, scopes, filters, recent searches, and tag search. |
 | Ink and Draw | **Partial** | One bitmap pen layer exists. Add stroke/vector storage, eraser/lasso, selection/transform, highlighters, pressure/touch support, shapes, ruler, ink replay, and ink-to-shape/text/math. |
 | Insert content | **Partial** | File attachments can be added at the caret, persisted, and downloaded/launched; OneNote HTML attachment objects retain their body position on import. Add inline images, attachment printouts/previews, camera/scans, links, audio/video recordings, online video, date/time, equations/symbols, stickers, and reusable page templates. |
-| Capture and integrations | **Missing** | Add a web clipper/share target, email-to-note workflow, meeting details, Outlook tasks, and optional Microsoft Graph interoperability. |
+| Capture and integrations | **Partial** | Read-only Microsoft Graph notebook import is available. Add synchronization, a web clipper/share target, email-to-note workflow, meeting details, and Outlook tasks. |
 | Collaboration and sync | **Missing** | State is one server-wide JSON document. Add accounts, private notebooks, invitations/links, permissions, real-time coauthoring, presence, comments/@mentions, conflict handling, offline cache, and multi-device sync. |
 | History and recovery | **Missing** | The History menu is informational only. Add undo/redo across editing, autosaved revisions, page versions/diff/restore, author attribution, recent edits, deleted-notes recycle bin, and backup/restore. |
-| Import/export/print | **Partial** | Project JSON and HTML-based imports exist; “OneNote ZIP” means ZIP files containing HTML, not native OneNote packages. Add sanitized, asset-aware import; PDF/HTML/Markdown export; print/preview; and document native `.one`/`.onepkg` limitations clearly. |
+| Import/export/print | **Partial** | Project JSON, HTML-based, and direct Microsoft Graph imports exist; “OneNote ZIP” means ZIP files containing HTML, not native OneNote packages. Graph import currently copies page HTML but not binary resources or subsequent changes. Add sanitized, asset-aware import; PDF/HTML/Markdown export; and print/preview. |
 | Accessibility and language | **Partial** | Semantic controls are limited and no audit has been completed. Add complete keyboard navigation, focus management, screen-reader labels, contrast/reflow testing, accessibility checker, spell/grammar checking, translation, dictation, and Immersive Reader-style reading tools. |
 | Security and administration | **Missing** | Add authentication/authorization, encrypted transport guidance, password-protected sections, per-user storage, audit logs, retention, quotas, validated uploads, HTML sanitization, CSP, CSRF protection, and rate limiting. |
 | Cross-platform experience | **Partial** | It is browser-based but desktop-oriented. Add responsive/mobile layouts, touch gestures, installable PWA support, offline editing, and tested browser/device compatibility. |
