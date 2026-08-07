@@ -40,7 +40,8 @@ specific legacy desktop release.
 
 ### Available now
 
-- Notebook → colored section → page hierarchy, with create/delete/navigation and two levels of subpages.
+- Notebook → colored section → page hierarchy, with create/delete/navigation,
+  two levels of subpages, and collapsible subpage groups.
 - Vertical or horizontal section navigation and light/dark themes.
 - Page title, created/updated timestamps, page filtering, and the Important,
   Question, and Idea page tags.
@@ -49,7 +50,8 @@ specific legacy desktop release.
 - Table insertion (up to 6 × 5 from the picker), row/column editing, cell
   shading, keyboard navigation, and table deletion.
 - A pen layer with selectable color and width, saved with the page.
-- JSON notebook export; JSON, HTML/HTM, and ZIP-of-HTML import.
+- JSON notebook export; JSON, HTML/HTM, and ZIP-of-HTML import, preserving
+  supported OneNote subpage levels from JSON metadata and ZIP folders.
 - Debounced server-side JSON persistence, including a one-time migration from
   the older browser-local state.
 
@@ -60,7 +62,7 @@ implementation exists; **Missing** = no implementation yet.
 
 | Capability | This project | Microsoft OneNote comparison / remaining gap |
 | --- | --- | --- |
-| Notebooks, sections, pages | **Available** | Core hierarchy and two-level page nesting exist. Add section groups, reorder/move/copy, rename, colors, recycle bins, and closed-notebook management. |
+| Notebooks, sections, pages | **Available** | Core hierarchy, two-level page nesting, hierarchy-aware import, and collapsing/expanding subpage groups exist. Add section groups, reorder/move/copy, rename, colors, recycle bins, and closed-notebook management. |
 | Free-form page canvas | **Partial** | Notes can contain multiple blocks and ink, but blocks are vertically stacked. Add true click-anywhere positioning, drag/resize, z-order, canvas zoom, and paper size/background/rule-line controls. |
 | Rich text and lists | **Partial** | Basic formatting, headings, lists, highlighting, and checkboxes exist. Add font family/size, styles, indentation, alignment, line spacing, clear formatting, format painter, symbols, equations, code formatting, and robust paste. |
 | Tables | **Partial** | Basic table creation and editing exists. Add resize, selection, merge/split, distribute, sort, header/banding styles, conversion to/from text, and accessible keyboard operations. |
@@ -100,7 +102,7 @@ migrates without loss; malformed or hostile imports cannot execute scripts.
 
 ### Phase 1 — Match the core notebook and editor workflow
 
-- [ ] Add rename, drag-to-reorder, move/copy, section groups, subpage collapse,
+- [ ] Add rename, drag-to-reorder, move/copy, section groups,
   duplicate, archive, and recycle-bin restore for every hierarchy level.
 - [ ] Implement truly free-form, draggable/resizable note containers with
   click-anywhere creation, selection, layering, zoom, and page backgrounds.

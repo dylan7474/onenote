@@ -753,17 +753,32 @@
             }
 
             let filteredPages = sec.pages;
+            const filtering = Boolean(filterQuery.trim());
             if (filterQuery.trim()) {
                 const q = filterQuery.toLowerCase();
                 filteredPages = sec.pages.filter(p => p.title.toLowerCase().includes(q) || (p.tags && p.tags.some(t => t.toLowerCase().includes(q))));
+            } else {
+                // OneNote hides the complete descendant branch when its parent is
+                // collapsed ("Collapse Subpages"), not merely the next level.
+                const collapsedLevels = [];
+                filteredPages = sec.pages.filter(page => {
+                    const level = getPageLevel(page);
+                    while (collapsedLevels.length && collapsedLevels[collapsedLevels.length - 1] >= level) collapsedLevels.pop();
+                    const hidden = collapsedLevels.length > 0;
+                    if (page.subpagesCollapsed) collapsedLevels.push(level);
+                    return !hidden;
+                });
             }
 
             container.innerHTML = filteredPages.map(page => {
                 const pageLevel = getPageLevel(page);
+                const pageIndex = sec.pages.indexOf(page);
+                const hasSubpages = pageIndex >= 0 && pageIndex + 1 < sec.pages.length && getPageLevel(sec.pages[pageIndex + 1]) > pageLevel;
                 return `
                 <div onclick="selectPage('${page.id}')" data-page-level="${pageLevel}" style="--page-level: ${pageLevel}" class="page-list-item group p-2.5 rounded-lg cursor-pointer transition border border-transparent ${page.id === state.activePageId ? 'bg-white dark:bg-slate-700/80 border-slate-200 dark:border-slate-600 shadow-sm' : 'hover:bg-slate-200/60 dark:hover:bg-slate-700/40'}">
                     <div class="flex items-start justify-between">
                         <div class="flex items-center min-w-0 gap-1">
+                            ${hasSubpages && !filtering ? `<button onclick="event.stopPropagation(); toggleSubpages('${page.id}')" class="shrink-0 rounded p-0.5 text-slate-400 hover:bg-slate-200 hover:text-onenote-600 dark:hover:bg-slate-600" title="${page.subpagesCollapsed ? 'Expand' : 'Collapse'} subpages" aria-label="${page.subpagesCollapsed ? 'Expand' : 'Collapse'} subpages of ${escapeHtml(page.title || 'Untitled Page')}" aria-expanded="${!page.subpagesCollapsed}"><i data-lucide="chevron-${page.subpagesCollapsed ? 'right' : 'down'}" class="w-3.5 h-3.5"></i></button>` : '<span class="w-4 shrink-0"></span>'}
                             ${pageLevel ? '<i data-lucide="corner-down-right" class="w-3.5 h-3.5 shrink-0 text-purple-400" aria-hidden="true"></i>' : ''}
                             <h4 class="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate ${page.id === state.activePageId ? 'text-onenote-700 dark:text-purple-300' : ''}">${escapeHtml(page.title || 'Untitled Page')}</h4>
                         </div>
@@ -797,6 +812,17 @@
             let end = pageIndex + 1;
             while (end < pages.length && getPageLevel(pages[end]) > level) end++;
             return end;
+        }
+
+        function toggleSubpages(id) {
+            const sec = getActiveSection();
+            if (!sec || !sec.pages) return;
+            const page = sec.pages.find(candidate => candidate.id === id);
+            if (!page) return;
+            page.subpagesCollapsed = !page.subpagesCollapsed;
+            saveStateToStorage();
+            renderPages(document.getElementById('pageFilterInput').value);
+            lucide.createIcons();
         }
 
         function makeSubpage(id) {
@@ -1565,12 +1591,40 @@
         }
 
         // Parser for OneNote JSON structure
+        function normalizeImportedPages(pages) {
+            if (!Array.isArray(pages)) return [];
+            const byId = new Map(pages.map(page => [String(page.id), page]));
+            return pages.map(page => {
+                let level = Number(page.level ?? page.pageLevel ?? page.subpageLevel ?? page.indentationLevel);
+                if (!Number.isFinite(level) && page.parentPageId != null) {
+                    level = 0;
+                    let parent = byId.get(String(page.parentPageId));
+                    const visited = new Set();
+                    while (parent && level < 2 && !visited.has(parent)) {
+                        visited.add(parent);
+                        level++;
+                        parent = parent.parentPageId == null ? null : byId.get(String(parent.parentPageId));
+                    }
+                }
+                return { ...page, level: Math.max(0, Math.min(2, Number.isFinite(level) ? Math.trunc(level) : 0)) };
+            });
+        }
+
+        function normalizeImportedNotebookData(value) {
+            const notebooks = value.notebooks || (value.sections ? [value] : []);
+            notebooks.forEach(notebook => (notebook.sections || []).forEach(section => {
+                section.pages = normalizeImportedPages(section.pages);
+            }));
+            if (value.pages) value.pages = normalizeImportedPages(value.pages);
+            return value;
+        }
+
         function parseJsonImport(file) {
             return new Promise((resolve) => {
                 const reader = new FileReader();
                 reader.onload = function(e) {
                     try {
-                        const importedData = JSON.parse(e.target.result);
+                        const importedData = normalizeImportedNotebookData(JSON.parse(e.target.result));
                         if (importedData.notebooks) {
                             // Full Notebook backup
                             state.notebooks.push(...importedData.notebooks);
@@ -1635,29 +1689,38 @@
                 const zip = await JSZip.loadAsync(file);
                 const importedPages = [];
 
-                for (let filename in zip.files) {
-                    if (filename.endsWith('.html') || filename.endsWith('.htm')) {
-                        const htmlContent = await zip.files[filename].async('string');
-                        const parser = new DOMParser();
-                        const doc = parser.parseFromString(htmlContent, 'text/html');
-                        const pageTitle = doc.title || filename.replace(/^.*[\\\/]/, '').replace(/\.[^/.]+$/, "");
+                const htmlFilenames = Object.keys(zip.files)
+                    .filter(filename => !zip.files[filename].dir && /\.html?$/i.test(filename))
+                    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+                const directoryParts = htmlFilenames.map(filename => filename.split('/').filter(Boolean).slice(0, -1));
+                let commonDepth = 0;
+                while (directoryParts.length && directoryParts.every(parts => parts[commonDepth] && parts[commonDepth] === directoryParts[0][commonDepth])) commonDepth++;
 
-                        importedPages.push({
-                            id: 'page_' + Date.now() + Math.random().toString(36).substr(2, 4),
-                            title: pageTitle,
-                            createdAt: new Date().toISOString(),
-                            updatedAt: new Date().toISOString(),
-                            tags: ['OneNote Archive'],
-                            blocks: [
-                                {
-                                    id: 'blk_' + Date.now(),
-                                    content: doc.body ? doc.body.innerHTML : htmlContent,
-                                    x: 0,
-                                    y: 0
-                                }
-                            ]
-                        });
-                    }
+                for (const filename of htmlFilenames) {
+                    const htmlContent = await zip.files[filename].async('string');
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(htmlContent, 'text/html');
+                    const pageTitle = doc.title || filename.replace(/^.*[\\\/]/, '').replace(/\.[^/.]+$/, "");
+
+                    importedPages.push({
+                        id: 'page_' + Date.now() + Math.random().toString(36).substr(2, 4),
+                        title: pageTitle,
+                        // OneNote HTML archives commonly represent grouped
+                        // pages as nested folders. Preserve that hierarchy,
+                        // while respecting OneNote's two subpage levels.
+                        level: Math.min(2, Math.max(0, filename.split('/').filter(Boolean).length - 1 - commonDepth)),
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString(),
+                        tags: ['OneNote Archive'],
+                        blocks: [
+                            {
+                                id: 'blk_' + Date.now(),
+                                content: doc.body ? doc.body.innerHTML : htmlContent,
+                                x: 0,
+                                y: 0
+                            }
+                        ]
+                    });
                 }
 
                 if (importedPages.length > 0) {
