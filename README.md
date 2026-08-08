@@ -36,6 +36,12 @@ as separate files, so attachments increase the size of `DATA_FILE`, exports,
 and every save request. Back up the data file or Docker volume before importing
 large archives.
 
+MHT imports support Microsoft OneNote's **Single File Web Page (`.mht`)** export
+and retain resources embedded in its MIME archive, including inline images.
+The import dialog can also import an entire folder of MHT or HTML exports as a
+new notebook: first-level subfolders become sections, deeper folders preserve up
+to two subpage levels, and an unreadable page does not prevent the remaining
+pages from importing. Browser folder import cannot read native `.onepkg` files.
 HTML imports can recover an attachment only when its OneNote `<object
 data-attachment>` contains an embedded data URL. ZIP imports can also resolve a
 referenced payload stored in the ZIP alongside the HTML page. Native `.one` and
@@ -75,7 +81,7 @@ specific legacy desktop release.
   multi-cell selection, merge/split, drag resizing, even distribution, sorting,
   header and banded-row styles, cell shading, keyboard navigation, and deletion.
 - A pen layer with selectable color and width, saved with the page.
-- JSON notebook export; JSON, HTML/HTM, and ZIP-of-HTML import, preserving
+- JSON notebook export; JSON, HTML/HTM, MHT/MHTML, and ZIP-of-HTML import, preserving
   supported OneNote subpage levels from JSON metadata and ZIP folders.
 - Debounced server-side JSON persistence, including a one-time migration from
   the older browser-local state.
@@ -98,7 +104,7 @@ implementation exists; **Missing** = no implementation yet.
 | Capture and integrations | **Missing** | Add a web clipper/share target, email-to-note workflow, meeting details, Outlook tasks, and optional Microsoft Graph interoperability. |
 | Collaboration and sync | **Missing** | State is one server-wide JSON document. Add accounts, private notebooks, invitations/links, permissions, real-time coauthoring, presence, comments/@mentions, conflict handling, offline cache, and multi-device sync. |
 | History and recovery | **Missing** | The History menu is informational only. Add undo/redo across editing, autosaved revisions, page versions/diff/restore, author attribution, recent edits, deleted-notes recycle bin, and backup/restore. |
-| Import/export/print | **Partial** | Project JSON and HTML-based imports exist; “OneNote ZIP” means ZIP files containing HTML, not native OneNote packages. Add sanitized, asset-aware import; PDF/HTML/Markdown export; print/preview; and document native `.one`/`.onepkg` limitations clearly. |
+| Import/export/print | **Partial** | Project JSON, HTML-based, and OneNote Single File Web Page (`.mht`) imports exist; “OneNote ZIP” means ZIP files containing HTML, not native OneNote packages. Add sanitized import, PDF/HTML/Markdown export, print/preview, and document native `.one`/`.onepkg` limitations clearly. |
 | Accessibility and language | **Partial** | Semantic controls are limited and no audit has been completed. Add complete keyboard navigation, focus management, screen-reader labels, contrast/reflow testing, accessibility checker, spell/grammar checking, translation, dictation, and Immersive Reader-style reading tools. |
 | Security and administration | **Missing** | Add authentication/authorization, encrypted transport guidance, password-protected sections, per-user storage, audit logs, retention, quotas, validated uploads, HTML sanitization, CSP, CSRF protection, and rate limiting. |
 | Cross-platform experience | **Partial** | It is browser-based but desktop-oriented. Add responsive/mobile layouts, touch gestures, installable PWA support, offline editing, and tested browser/device compatibility. |
