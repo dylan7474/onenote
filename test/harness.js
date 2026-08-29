@@ -91,6 +91,17 @@ function createApp({ onFetch } = {}) {
     window.confirm = () => true;
     window.alert = () => {};
     window.scrollTo = () => {};
+
+    // Clipboard stub. Records the last write on window.__clipboard.
+    window.__clipboard = { items: null, text: null };
+    window.ClipboardItem = function ClipboardItem(items) { this.items = items; };
+    Object.defineProperty(window.navigator, 'clipboard', {
+        configurable: true,
+        value: {
+            write: async (data) => { window.__clipboard.items = data; },
+            writeText: async (text) => { window.__clipboard.text = text; },
+        },
+    });
     window.HTMLCanvasElement.prototype.getContext = function getContext() {
         const ctx = makeContext2dStub();
         ctx.canvas = this;

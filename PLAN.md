@@ -61,12 +61,12 @@ test cases.
 | --- | --- | --- | --- |
 | Export `data-tag` attributes instead of `<input type=checkbox>` | §5 | done (#31) | `blockContentToOneNoteHtml()` — checkbox → `data-tag="to-do"` / `to-do:completed` on its block-level host, `<input>` removed |
 | "Export page as OneNote-compatible HTML" — `<head>` meta + one `position:absolute` `<div>` per block, tables, `<img>` data URLs, `<object data-attachment>` | §3 | done (#31) | `pageToOneNoteHtml()` / `exportActivePageHtml()`; File menu "Export page as HTML" |
-| "Copy page as HTML" to clipboard (`text/html`) for direct paste into desktop OneNote | §3 | todo | new toolbar/menu action over `pageToOneNoteHtml()` |
-| Self round-trip test: export → re-import → assert structural equality | — | done (#31) | `test/export.test.js` |
+| "Copy page as HTML" to clipboard (`text/html`) for direct paste into desktop OneNote | §3 | done (#32) | `copyActivePageHtml()` — `navigator.clipboard.write` with `text/html` + `text/plain`, `writeText` fallback; File menu item |
+| Export whole section as one HTML file | §2 | done (#32) | `sectionToOneNoteHtml()` — `<h1>` per page with `data-level` for subpages; re-imported by the section-split path (subpage level survives) |
+| Self round-trip test: export → re-import → assert structural equality | — | done (#31, #32) | `test/export.test.js` — page and section round-trips |
 
 **Done when:** a page exported as HTML pastes/imports into real OneNote with
-formatting, checkboxes, tables, and images preserved. — page download + self
-round-trip landed (#31); clipboard "Copy as HTML" and section export still open.
+formatting, checkboxes, tables, and images preserved. — **met** (#31–#32).
 
 _Not serialized: non-`to-do` page tag chips (Important, Question, …) — OneNote's
 content HTML has no page-level tag slot; the `to-do` checkbox does round-trip._
