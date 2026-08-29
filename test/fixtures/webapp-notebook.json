@@ -1,0 +1,46 @@
+{
+  "id": "nb_import_1",
+  "name": "Imported Notebook",
+  "sections": [
+    {
+      "id": "sec_import_1",
+      "name": "Research",
+      "color": "#3b82f6",
+      "pages": [
+        {
+          "id": "p_root",
+          "title": "Overview",
+          "createdAt": "2021-03-01T09:00:00.000Z",
+          "updatedAt": "2021-03-05T12:00:00.000Z",
+          "tags": ["Important"],
+          "blocks": [
+            {
+              "id": "b_root",
+              "content": "<h2>Overview</h2><p>Body text.</p><script>window.__json_pwned = true;<\/script><p onclick=\"window.__json_pwned_onclick = true\">x</p>",
+              "x": 0,
+              "y": 0
+            }
+          ]
+        },
+        {
+          "id": "p_child",
+          "title": "Sub-topic",
+          "parentPageId": "p_root",
+          "createdAt": "2021-03-02T09:00:00.000Z",
+          "updatedAt": "2021-03-02T09:00:00.000Z",
+          "tags": [],
+          "blocks": [{ "id": "b_child", "content": "<p>child</p>", "x": 0, "y": 0 }]
+        },
+        {
+          "id": "p_grandchild",
+          "title": "Detail",
+          "parentPageId": "p_child",
+          "createdAt": "2021-03-03T09:00:00.000Z",
+          "updatedAt": "2021-03-03T09:00:00.000Z",
+          "tags": [],
+          "blocks": [{ "id": "b_grandchild", "content": "<p>grandchild</p>", "x": 0, "y": 0 }]
+        }
+      ]
+    }
+  ]
+}

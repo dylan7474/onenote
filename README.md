@@ -28,6 +28,20 @@ served by `server.js`; imported and edited HTML is sanitised through that
 DOMPurify build before it is stored or rendered. See `vendor/README.md` for
 provenance. Tailwind and the Inter web font are still loaded from a CDN.
 
+## Tests
+
+```bash
+npm ci        # installs jsdom, the only dev dependency
+npm test      # node --test
+```
+
+The suite (`test/`) loads the inline application script into jsdom and pins the
+current behaviour of the importers, exporter, sanitiser and notebook/section/page
+operations, so later refactors are caught. Cases that document a known gap from
+`REVIEW.md` are marked `{ todo: true }` and become real assertions when that gap
+is closed. Fixtures under `test/fixtures/` are synthetic — see the README there.
+CI runs `npm test` on pushes to `main` and on pull requests.
+
 ## Using file attachments
 
 Select a page and place the caret in a note, then choose **Insert → File
