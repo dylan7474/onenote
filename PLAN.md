@@ -82,10 +82,11 @@ content HTML has no page-level tag slot; the `to-do` checkbox does round-trip._
 | Introduce a Graph⇄internal adapter: `name`→`displayName`, keep `title`, page-level `content` vs `block.content` | §4 | todo | new adapter over `pageToOneNoteHtml()` / the importer |
 | Map `section.color` to a named palette on import; deterministic assignment for new sections | §8 | done (#33) | `SECTION_COLOR_PALETTE` + `nearestSectionColor()` / `snapSectionColor()` / `sectionColorName()`; `Math.random()` picks replaced with rotation; JSON import snaps foreign hex |
 | `page.level` handling: keep the 3-level UI model, serialize subpages as `<h1 data-level>` in exported content | §4 | done (#32) | `sectionToOneNoteHtml()` / `splitSectionHtml()` — landed with Phase 2 |
-| Add a state schema version + migration hook | §4 | todo | `server.js` `writeState`, `loadStateFromServer` |
+| Add a state schema version + migration hook | §4 | done (#34) | `SCHEMA_VERSION` in `index.html` + `server.js`; `migrateState()` runs on every load (v0→v1: snap colours, fill arrays, clamp `level`); `writeState` rejects a state stamped newer (409). `server.js` now exports `{ server, SCHEMA_VERSION }` for tests |
 
 **Done when:** internal objects convert to/from Graph shapes without loss;
-section colors survive a round-trip.
+section colors survive a round-trip. — colours + schema versioning done
+(#33, #34); the Graph adapter is the last Phase 3 slice.
 
 ---
 
