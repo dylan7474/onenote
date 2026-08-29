@@ -104,6 +104,50 @@ test('HTML import: data-tag maps to checkboxes and page chips (REVIEW §5)', asy
     assert.match(html, /<p data-tag="important, critical">Both at once\.<\/p>/);
 });
 
+test('HTML import: a whole-section export splits into one page per top-level <h1> (REVIEW §2)', async (t) => {
+    const { window, dispose } = createApp();
+    t.after(dispose);
+    seedNotebook(window);
+    const nowYear = new Date().getUTCFullYear();
+
+    await window.parseHtmlImport(fixtureFile(window, 'onenote-section.html', 'text/html', 'onenote-section.html'));
+    // Imported pages are unshifted ahead of the seed page.
+    const pages = plain(getState(window).notebooks[0].sections[0].pages).slice(0, 3);
+
+    assert.deepEqual(pages.map((p) => p.title), ['Trip Notes', 'Packing List', 'Budget']);
+
+    // First page keeps the document's created meta; the rest fall back to now.
+    assert.equal(pages[0].createdAt, '2021-05-01T12:00:00.000Z');
+    assert.equal(new Date(pages[1].createdAt).getUTCFullYear(), nowYear);
+
+    // Section-wide data-tag chips are on every page.
+    for (const p of pages) assert.ok(plain(p.tags).includes('Important'));
+
+    // The <object> lives in the first page's fragment -> its attachment lands there.
+    assert.equal(pages[0].attachments.length, 1);
+    assert.equal(pages[0].attachments[0].name, 'itinerary.pdf');
+    assert.equal(pages[0].attachments[0].size, window.atob(pages[0].attachments[0].data).length);
+    assert.equal(pages[1].attachments.length, 0);
+
+    // Content is routed to the right page.
+    assert.match(pages[1].blocks[0].content, /Passport/);
+    assert.match(pages[1].blocks[0].content, /<input type="checkbox" checked[^>]*>\s*Charger/);
+    assert.match(pages[2].blocks[0].content, /<table/i);
+    assert.doesNotMatch(pages[0].blocks[0].content, /Passport/);
+});
+
+test('HTML import: a single positioned-outline page is not split on its inner <h1>s', async (t) => {
+    const { window, dispose } = createApp();
+    t.after(dispose);
+    seedNotebook(window);
+
+    await window.parseHtmlImport(fixtureFile(window, 'onenote-multi-outline.html', 'text/html', 'onenote-multi-outline.html'));
+    const pages = getState(window).notebooks[0].sections[0].pages;
+    assert.equal(pages[0].title, 'Two Outlines');
+    assert.equal(pages[1].title, 'Seed Page', 'only one page imported, not one per inner <h1>');
+    assert.equal(pages[0].blocks.length, 2, 'two outline blocks');
+});
+
 test('HTML import: embedded <object data-attachment> becomes a stored attachment', async (t) => {
     const { window, dispose } = createApp();
     t.after(dispose);
@@ -202,7 +246,7 @@ test('normalizeImportedPages: explicit level wins, inferred chain caps at 2', (t
     assert.deepEqual(plain(out.map((p) => p.level)), [0, 1, 2, 2, 2, 0]);
 });
 
-test('ZIP import: section from filename, pages sorted, folder depth -> level', async (t) => {
+test('ZIP import: section name, sort order, and subpage levels (REVIEW §4)', async (t) => {
     const { window, dispose } = createApp();
     t.after(dispose);
     seedNotebook(window);
@@ -213,10 +257,14 @@ test('ZIP import: section from filename, pages sorted, folder depth -> level', a
     assert.equal(nb.sections.length, 2, 'seed section + imported section');
     const section = nb.sections.at(-1);
     assert.equal(section.name, 'My Section', 'name from the zip filename');
-    assert.deepEqual(plain(section.pages.map((p) => p.title)), ['Page One', 'Page Two', 'Deep Dive']);
+    assert.deepEqual(
+        plain(section.pages.map((p) => p.title)),
+        ['Page One', 'Page Two', 'Report', 'Report — Appendix A', 'Report — Appendix B', 'Deep Dive'],
+    );
 
-    // CURRENT: nesting is derived from folder depth below the common prefix.
-    assert.deepEqual(plain(section.pages.map((p) => p.level)), [0, 0, 1]);
+    // "Report 1/2.html" next to "Report.html" -> subpages (level 1);
+    // "Subpages/Deep Dive.html" -> level 1 by folder depth.
+    assert.deepEqual(plain(section.pages.map((p) => p.level)), [0, 0, 0, 1, 1, 1]);
 
     const pageOne = section.pages[0];
     assert.equal(pageOne.createdAt, '2022-01-10T08:00:00.000Z', 'created meta read from the zipped HTML');

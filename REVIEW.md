@@ -62,6 +62,9 @@ keep `doc.body.innerHTML` verbatim in a single block and only special-case
   "export whole section as one HTML file" produces one document with many
   `<h1>`-delimited pages. Split on the page separators rather than making one
   giant page.
+  _Status: done in Phase 1 (#30) — `splitSectionHtml()` splits when there are
+  ≥2 top-level `<h1>` and no positioned outline; inline attachments follow the
+  page that references them._
 
 ## 3. No HTML export = no round-trip back into OneNote
 
@@ -89,11 +92,13 @@ Small renames now avoid a painful adapter later:
 
 The last row matters: the 3-level `level` model maps to nothing Graph exposes,
 and OneNote's own ZIP export represents subpages by **filename** (`Page.html`,
-`Page 1.html`, `Page 2.html` for a subpage group), **not nested folders**. The
-ZIP heuristic `filename.split('/').length - 1 - commonDepth`
-(`index.html:2175`) mis-nests almost every real OneNote export, which uses a
-flat `Notebook/Section/Page.html` layout. Test against an actual export and
-rework it.
+`Page 1.html`, `Page 2.html` for a subpage group), **not nested folders**.
+
+_ZIP subpage detection: done in Phase 1 (#30) — `subpageInfo()` recognises the
+`Foo 1.html` / `Foo 2.html` naming as subpages of `Foo` (level 1) and sorts
+them after the group's own page; the folder-depth heuristic is kept as a
+fallback for archives that nest with folders. The name-vs-Graph-schema
+alignment (`displayName`, page-level `content`) is still Phase 3._
 
 ## 5. Tag / checkbox model mismatch
 
