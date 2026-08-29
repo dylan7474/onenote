@@ -58,8 +58,9 @@ large archives.
 
 HTML imports can recover an attachment only when its OneNote `<object
 data-attachment>` contains an embedded data URL. ZIP imports can also resolve a
-referenced payload stored in the ZIP alongside the HTML page. Native `.one` and
-`.onepkg` files remain unsupported. The formats themselves are documented by
+referenced payload stored in the ZIP alongside the HTML page, and inline any
+`<img>` whose file is present in the ZIP as a data URL (remote and missing image
+references are left as-is). Native `.one` and `.onepkg` files remain unsupported. The formats themselves are documented by
 Microsoft ([MS-ONESTORE] for the revision-store file, [MS-ONE] for the content
 schema; `.onepkg` is a CAB archive of `.one` files), so a read-only importer is
 feasible but out of scope here — use Microsoft 365 / the Graph OneNote API for

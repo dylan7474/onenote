@@ -40,6 +40,9 @@ keep `doc.body.innerHTML` verbatim in a single block and only special-case
   callback for the ZIP path — extend it to walk `img[src]`, pull bytes from the
   ZIP (or the `data:` URL), and rewrite `src` to a data URL or a stored
   attachment. Biggest visible fidelity loss today.
+  _Status: done in Phase 1 (#25) — `inlineImages()` embeds ZIP-resident and
+  `data:` images; remote/missing refs are left untouched. Plain-HTML relative
+  refs still can't be resolved (no sibling files)._
 - **Positioned outlines are flattened.** OneNote wraps each note container in
   `<div style="position:absolute;left:Npx;top:Mpx;width:Wpx">`. The data model
   already has per-block `x`/`y` (`index.html:2131`), but the importer forces
