@@ -63,7 +63,10 @@ referenced payload stored in the ZIP alongside the HTML page, and inline any
 references are left as-is). Each OneNote `position:absolute` outline is imported
 as its own note block (keeping its canvas coordinates), and page
 created/modified times are taken from the document's `<meta name="created">` /
-`<meta name="lastModified">` when present. `data-tag` markup is mapped on
+`<meta name="lastModified">` when present. A single HTML file that holds a whole
+section (several `<h1>`-headed pages) is split into one page each, and a ZIP
+whose subpages are named `Foo 1.html` / `Foo 2.html` alongside `Foo.html` keeps
+that nesting. `data-tag` markup is mapped on
 import: `to-do` becomes a checkbox, and the other tag values (`important`,
 `question`, …) become page tag chips. An `<object>` attachment that points at a
 remote URL (e.g. a Microsoft Graph resource) is shown as an "unavailable"

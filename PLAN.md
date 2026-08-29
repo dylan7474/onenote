@@ -40,14 +40,15 @@ for this.
 | Parse top-level `position:absolute` outline `<div>`s into separate blocks with `x`/`y`/`width` instead of one block at `0,0` | §2 | done (#26) | `extractPositionedBlocks()` / `blocksFromImportedDoc()`; `px`/`pt` parsed; stray body content kept as a trailing block. Geometry is stored + round-trips in JSON export; the editor still stacks vertically (free-form canvas is later). |
 | Read `<meta name="created">` / `lastModified` for `createdAt`/`updatedAt` | §2 | done (#27) | `readDocDates()`; case-insensitive meta lookup, offset-aware parse, falls back to import time |
 | Import `<p data-tag="to-do｜important｜question｜…">` → checkbox UI + tag chips | §5 | done (#28) | `applyDataTags()` — `to-do`/`to-do:completed` → checkbox (attribute kept for round-trip); other values → page chips (known set → friendly labels, unknown → title-cased); comma lists supported |
-| Split whole-section HTML export (one doc, `<h1>`-delimited) into multiple pages | §2 | todo | `parseHtmlImport` |
-| Rework ZIP subpage-level detection — flat `Notebook/Section/Page.html`, subpages by filename — replace the folder-depth heuristic | §4 | todo | `parseZipImport` |
+| Split whole-section HTML export (one doc, `<h1>`-delimited) into multiple pages | §2 | done (#30) | `splitSectionHtml()` — only when ≥2 top-level `<h1>` and no positioned outline; inline attachments routed to the page that references them; first page keeps the doc's `<meta>` dates |
+| Rework ZIP subpage-level detection — subpages named by filename (`Foo 1.html` next to `Foo.html`) — beside the folder-depth heuristic | §4 | done (#30) | `subpageInfo()` — numbered members → level 1, sorted after their group's own page; folder depth kept as the fallback |
 | Fix importer bugs: `decodeDataUrl` malformed-escape crash (#25); ZIP asset basename fallback across `*_files/`; base64 size math padding | §9 | done (#25, #29) | `resolveFile` now falls back to a unique same-basename zip entry; `base64ByteLength()` accounts for `=` padding |
 | Detect Graph-host `<object data>` URLs and surface "requires sign-in" instead of an empty chip | §9 | done (#29) | remote `<object data>` → `span.inline-attachment.attachment-unresolved` with `data-attachment-source` and a "(unavailable)" label, no dangling id |
 
 **Done when:** a real OneNote HTML page and ZIP export import with images intact,
 correct timestamps, checkboxes/tags mapped, and layout approximating the
-original.
+original. — **met** (all rows landed in #25–#30; `test/import.test.js` covers
+each against synthetic fixtures).
 
 ---
 

@@ -2193,12 +2193,12 @@
             return blocks;
         }
 
-        // Block list for an imported page: one block per positioned outline
+        // Block list for an imported page body: one block per positioned outline
         // (with geometry), or a single block when there are none. Content is
         // sanitised here.
-        function blocksFromImportedDoc(doc, fallbackHtml) {
-            const stamp = Date.now();
-            const positioned = doc.body ? extractPositionedBlocks(doc.body) : null;
+        function blocksFromImportedBody(bodyEl, fallbackHtml) {
+            const stamp = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+            const positioned = bodyEl ? extractPositionedBlocks(bodyEl) : null;
             if (positioned) {
                 return positioned.map((b, i) => {
                     const block = { id: `blk_${stamp}_${i}`, content: sanitizeHtml(b.content), x: b.x, y: b.y };
@@ -2206,7 +2206,32 @@
                     return block;
                 });
             }
-            return [{ id: `blk_${stamp}`, content: sanitizeHtml(doc.body ? doc.body.innerHTML : fallbackHtml), x: 0, y: 0 }];
+            return [{ id: `blk_${stamp}`, content: sanitizeHtml(bodyEl ? bodyEl.innerHTML : fallbackHtml), x: 0, y: 0 }];
+        }
+
+        // A single HTML file that is really a whole-section export: several
+        // pages, each introduced by a top-level <h1>. Moves each page's nodes
+        // into its own detached wrapper and returns { title, body } entries, or
+        // null when the document is a single page.
+        function splitSectionHtml(body) {
+            const children = Array.from(body.children);
+            const headings = children.filter(el => el.tagName === 'H1');
+            if (headings.length < 2) return null;
+            // A positioned-outline document is one page, even with several <h1>.
+            if (children.some(el => el.tagName === 'DIV'
+                && /position\s*:\s*absolute/i.test(el.getAttribute('style') || ''))) return null;
+
+            return headings.map((heading, i) => {
+                const end = headings[i + 1] || null;
+                const wrap = body.ownerDocument.createElement('div');
+                let node = heading;
+                while (node && node !== end) {
+                    const next = node.nextSibling;
+                    wrap.appendChild(node);
+                    node = next;
+                }
+                return { title: (heading.textContent || '').trim() || `Page ${i + 1}`, body: wrap };
+            });
         }
 
         // OneNote's "Export as HTML" records page times in the document head as
@@ -2313,15 +2338,39 @@
 
                     const sec = getActiveSection();
                     if (sec) {
-                        sec.pages.unshift({
-                            id: 'page_' + Date.now() + Math.random().toString(36).substr(2, 4),
-                            title: pageTitle,
-                            createdAt,
-                            updatedAt,
-                            tags: [...tags],
-                            attachments,
-                            blocks: blocksFromImportedDoc(doc, htmlText)
-                        });
+                        const mkId = () => 'page_' + Date.now() + Math.random().toString(36).slice(2, 6);
+                        const attachmentsIn = bodyEl => attachments.filter(a => bodyEl.querySelector(`[data-attachment-id="${a.id}"]`));
+                        const sectionPages = splitSectionHtml(doc.body);
+
+                        if (sectionPages) {
+                            const claimed = new Set();
+                            const pages = sectionPages.map((sp, i) => {
+                                const own = attachmentsIn(sp.body);
+                                own.forEach(a => claimed.add(a.id));
+                                return {
+                                    id: mkId(),
+                                    title: sp.title,
+                                    createdAt: i === 0 ? createdAt : new Date().toISOString(),
+                                    updatedAt: i === 0 ? updatedAt : new Date().toISOString(),
+                                    tags: [...tags],
+                                    attachments: own,
+                                    blocks: blocksFromImportedBody(sp.body, sp.body.innerHTML)
+                                };
+                            });
+                            const orphans = attachments.filter(a => !claimed.has(a.id));
+                            if (orphans.length) pages[0].attachments = [...pages[0].attachments, ...orphans];
+                            for (let i = pages.length - 1; i >= 0; i--) sec.pages.unshift(pages[i]);
+                        } else {
+                            sec.pages.unshift({
+                                id: mkId(),
+                                title: pageTitle,
+                                createdAt,
+                                updatedAt,
+                                tags: [...tags],
+                                attachments,
+                                blocks: blocksFromImportedBody(doc.body, htmlText)
+                            });
+                        }
                         saveStateToStorage();
                     }
                     resolve();
@@ -2337,11 +2386,7 @@
                 const importedPages = [];
 
                 const htmlFilenames = Object.keys(zip.files)
-                    .filter(filename => !zip.files[filename].dir && /\.html?$/i.test(filename))
-                    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-                const directoryParts = htmlFilenames.map(filename => filename.split('/').filter(Boolean).slice(0, -1));
-                let commonDepth = 0;
-                while (directoryParts.length && directoryParts.every(parts => parts[commonDepth] && parts[commonDepth] === directoryParts[0][commonDepth])) commonDepth++;
+                    .filter(filename => !zip.files[filename].dir && /\.html?$/i.test(filename));
 
                 // basename -> [full paths], for resolving asset references whose
                 // path OneNote rewrote (e.g. a "<page>_files/" folder).
@@ -2352,6 +2397,40 @@
                     if (!filesByBasename.has(base)) filesByBasename.set(base, []);
                     filesByBasename.get(base).push(key);
                 }
+
+                // Subpage nesting. OneNote names a subpage group "Foo.html",
+                // "Foo 1.html", "Foo 2.html" in the same folder — the numbered
+                // members are subpages of "Foo". `subpageInfo` returns the group
+                // name and 1-based index (index 0 = the group's own page /
+                // a standalone page).
+                const htmlLower = new Set(htmlFilenames.map(f => f.toLowerCase()));
+                const subpageInfo = filename => {
+                    const dir = filename.includes('/') ? filename.slice(0, filename.lastIndexOf('/') + 1) : '';
+                    const base = filename.slice(dir.length).replace(/\.html?$/i, '');
+                    const m = base.match(/^(.+?)[ _](\d+)$/);
+                    if (m && (htmlLower.has(`${dir}${m[1]}.html`.toLowerCase()) || htmlLower.has(`${dir}${m[1]}.htm`.toLowerCase()))) {
+                        return { dir, group: m[1], index: Number(m[2]) };
+                    }
+                    return { dir, group: base, index: 0 };
+                };
+
+                // Sort so a group's own page precedes its numbered subpages.
+                htmlFilenames.sort((a, b) => {
+                    const ka = subpageInfo(a), kb = subpageInfo(b);
+                    return ka.dir.localeCompare(kb.dir, undefined, { numeric: true })
+                        || ka.group.localeCompare(kb.group, undefined, { numeric: true })
+                        || ka.index - kb.index;
+                });
+
+                const directoryParts = htmlFilenames.map(filename => filename.split('/').filter(Boolean).slice(0, -1));
+                let commonDepth = 0;
+                while (directoryParts.length && directoryParts.every(parts => parts[commonDepth] && parts[commonDepth] === directoryParts[0][commonDepth])) commonDepth++;
+
+                // Numbered subpages -> level 1; otherwise fall back to folder
+                // depth below the common prefix.
+                const pageLevel = filename => subpageInfo(filename).index > 0
+                    ? 1
+                    : Math.min(2, Math.max(0, filename.split('/').filter(Boolean).length - 1 - commonDepth));
 
                 for (const filename of htmlFilenames) {
                     const htmlContent = await zip.files[filename].async('string');
@@ -2382,14 +2461,11 @@
                     importedPages.push({
                         id: 'page_' + Date.now() + Math.random().toString(36).substr(2, 4),
                         title: pageTitle,
-                        // OneNote HTML archives commonly represent grouped
-                        // pages as nested folders. Preserve that hierarchy,
-                        // while respecting OneNote's two subpage levels.
-                        level: Math.min(2, Math.max(0, filename.split('/').filter(Boolean).length - 1 - commonDepth)),
+                        level: pageLevel(filename),
                         ...readDocDates(doc),
                         tags: [...tags],
                         attachments,
-                        blocks: blocksFromImportedDoc(doc, htmlContent)
+                        blocks: blocksFromImportedBody(doc.body, htmlContent)
                     });
                 }
 
