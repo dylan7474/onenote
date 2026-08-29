@@ -16,16 +16,16 @@ PR-sized slice, matching how the repo already works.
 **Why first:** real OneNote HTML cannot be safely ingested without
 sanitization, and no import/export change can be verified without fixtures.
 
-| Task | REVIEW ref | Code touchpoints |
-| --- | --- | --- |
-| Add DOMPurify (pinned, self-hosted) with an allowlist that keeps `style`, `data-tag`, `data-id`, `data-render-src`, `data-fullres-src`, `width`/`height`, table attrs | §6 | new `sanitizeHtml()`; call in `saveBlockContent` (`index.html:1190`), `renderActivePage` (`index.html:1088-1094`), `documentAttachmentIds` (`index.html:1128`) |
-| Self-host Lucide instead of `unpkg@latest` | §6 | `index.html:30` |
-| Collect real OneNote export fixtures: single-page HTML, whole-section HTML, ZIP export, page with images, page with `data-tag` checkboxes/tags, page with attachments | §2, §5 | new `test/fixtures/` |
-| Stand up a minimal test harness (node + jsdom, or Playwright) with characterization tests over the current importers/exporters as-is, so refactors are safe | — | new `test/` |
-| README correction: `.one`/`.onepkg` is documented ([MS-ONESTORE]/[MS-ONE]), not undocumented | §7 | `README.md:9-10`, `README.md:41-42` |
+| Task | REVIEW ref | Status | Code touchpoints |
+| --- | --- | --- | --- |
+| Add DOMPurify (pinned, self-hosted) with an allowlist that keeps `style`, `data-tag`, `data-id`, `data-render-src`, `data-fullres-src`, `width`/`height`, table attrs | §6 | done (#23) | `sanitizeHtml()` / `sanitizeImportedTree()`; called on every import path, `saveBlockContent`, `insertInlineAttachments`, and defensively in `renderActivePage` / `documentAttachmentIds` |
+| Self-host Lucide instead of `unpkg@latest` (plus DOMPurify + JSZip) | §6 | done (#23) | `vendor/` + `vendor/README.md`; `server.js` `/vendor/*`; `deploy.sh` |
+| OneNote export fixtures: single-page HTML, ZIP export, `data-tag` paragraphs, attachments | §2, §5 | done (#24, synthetic) | `test/fixtures/` — synthetic, to be supplemented with real captures |
+| Test harness (node:test + jsdom) with characterization tests over the current importers/exporter/sanitiser/CRUD as-is | — | done (#24) | `test/` (27 tests; 2 `todo` placeholders for Phase 1); CI in `.github/workflows/test.yml` |
+| README correction: `.one`/`.onepkg` is documented ([MS-ONESTORE]/[MS-ONE]) | §7 | done (#23) | `README.md`, `REVIEW.md` §7 |
 
 **Done when:** malformed or hostile imported HTML cannot execute script; existing
-import/export behavior is pinned by tests.
+import/export behavior is pinned by tests. — **met.**
 
 ---
 
