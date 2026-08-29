@@ -77,12 +77,12 @@ content HTML has no page-level tag slot; the `to-do` checkbox does round-trip._
 
 **Why:** small now, avoids a painful adapter when Graph lands.
 
-| Task | REVIEW ref | Code touchpoints |
-| --- | --- | --- |
-| Introduce a Graph⇄internal adapter (or rename): `name`→`displayName`, keep `title`, page-level `content` vs `block.content` | §4 | `server.js` validation (`server.js:49`), `index.html:855`, state schema |
-| Map `section.color` to OneNote's ~16 named colors on import/export; stop random hex assignment | §8 | `SECTION_COLORS` (`index.html:485`, `index.html:2196`) |
-| Decide `page.level` handling: keep the 3-level UI model, but serialize subpages as `<h1>`/indent depth in exported `content` | §4 | `normalizeImportedPages` (`index.html:2016-2033`), exporters |
-| Add a state schema version + migration hook (supports Phase 4 sync and safe reshaping) | §4 | `server.js` `writeState`, `initializeState` (`index.html:687`) |
+| Task | REVIEW ref | Status | Code touchpoints |
+| --- | --- | --- | --- |
+| Introduce a Graph⇄internal adapter: `name`→`displayName`, keep `title`, page-level `content` vs `block.content` | §4 | todo | new adapter over `pageToOneNoteHtml()` / the importer |
+| Map `section.color` to a named palette on import; deterministic assignment for new sections | §8 | done (#33) | `SECTION_COLOR_PALETTE` + `nearestSectionColor()` / `snapSectionColor()` / `sectionColorName()`; `Math.random()` picks replaced with rotation; JSON import snaps foreign hex |
+| `page.level` handling: keep the 3-level UI model, serialize subpages as `<h1 data-level>` in exported content | §4 | done (#32) | `sectionToOneNoteHtml()` / `splitSectionHtml()` — landed with Phase 2 |
+| Add a state schema version + migration hook | §4 | todo | `server.js` `writeState`, `loadStateFromServer` |
 
 **Done when:** internal objects convert to/from Graph shapes without loss;
 section colors survive a round-trip.

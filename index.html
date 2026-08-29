@@ -489,15 +489,52 @@
         let lastX = 0;
         let lastY = 0;
 
-        // OneNote Section Preset Accent Colors
-        const SECTION_COLORS = [
-            '#8b5cf6', // Purple
-            '#3b82f6', // Blue
-            '#06b6d4', // Teal
-            '#10b981', // Green
-            '#f59e0b', // Amber
-            '#ec4899'  // Pink
+        // Named section colours, roughly matching OneNote's fixed palette. New
+        // sections cycle through these; imported hex colours snap to the nearest
+        // entry, and the Graph adapter round-trips the name.
+        const SECTION_COLOR_PALETTE = [
+            { name: 'Purple',  hex: '#8b5cf6' },
+            { name: 'Blue',    hex: '#3b82f6' },
+            { name: 'Teal',    hex: '#14b8a6' },
+            { name: 'Cyan',    hex: '#06b6d4' },
+            { name: 'Green',   hex: '#22c55e' },
+            { name: 'Lime',    hex: '#84cc16' },
+            { name: 'Yellow',  hex: '#eab308' },
+            { name: 'Orange',  hex: '#f59e0b' },
+            { name: 'Red',     hex: '#ef4444' },
+            { name: 'Pink',    hex: '#ec4899' },
+            { name: 'Magenta', hex: '#d946ef' },
+            { name: 'Indigo',  hex: '#6366f1' },
+            { name: 'Brown',   hex: '#92400e' },
+            { name: 'Slate',   hex: '#64748b' },
+            { name: 'Gray',    hex: '#9ca3af' },
+            { name: 'Black',   hex: '#1f2937' }
         ];
+        // Kept as a plain hex list so existing `SECTION_COLORS[i]` call sites work.
+        const SECTION_COLORS = SECTION_COLOR_PALETTE.map(c => c.hex);
+
+        function parseHexColor(value) {
+            const m = String(value || '').trim().match(/^#?([0-9a-f]{3}|[0-9a-f]{6})$/i);
+            if (!m) return null;
+            const hex = m[1].length === 3 ? m[1].replace(/(.)/g, '$1$1') : m[1];
+            return [0, 2, 4].map(i => parseInt(hex.slice(i, i + 2), 16));
+        }
+
+        function nearestSectionColor(value) {
+            const rgb = parseHexColor(value);
+            if (!rgb) return SECTION_COLOR_PALETTE[0];
+            let best = SECTION_COLOR_PALETTE[0];
+            let bestDist = Infinity;
+            for (const entry of SECTION_COLOR_PALETTE) {
+                const [r, g, b] = parseHexColor(entry.hex);
+                const dist = (r - rgb[0]) ** 2 + (g - rgb[1]) ** 2 + (b - rgb[2]) ** 2;
+                if (dist < bestDist) { bestDist = dist; best = entry; }
+            }
+            return best;
+        }
+
+        function snapSectionColor(value) { return nearestSectionColor(value).hex; }
+        function sectionColorName(value) { return nearestSectionColor(value).name; }
 
         // Active Table Focus Tracking
         let currentActiveCell = null;
@@ -1266,7 +1303,7 @@
                     {
                         id: 'sec_' + Date.now(),
                         name: 'Quick Notes',
-                        color: SECTION_COLORS[Math.floor(Math.random() * SECTION_COLORS.length)],
+                        color: SECTION_COLORS[state.notebooks.length % SECTION_COLORS.length],
                         pages: [
                             {
                                 id: 'page_' + Date.now(),
@@ -2054,6 +2091,7 @@
             const notebooks = value.notebooks || (value.sections ? [value] : []);
             notebooks.forEach(notebook => (notebook.sections || []).forEach(section => {
                 section.pages = normalizeImportedPages(section.pages);
+                if (section.color) section.color = snapSectionColor(section.color);
             }));
             if (value.pages) value.pages = normalizeImportedPages(value.pages);
             return value;
@@ -2476,7 +2514,7 @@
                     nb.sections.push({
                         id: 'sec_' + Date.now(),
                         name: file.name.replace(/\.[^/.]+$/, ""),
-                        color: SECTION_COLORS[Math.floor(Math.random() * SECTION_COLORS.length)],
+                        color: SECTION_COLORS[nb.sections.length % SECTION_COLORS.length],
                         pages: importedPages
                     });
                     saveStateToStorage();

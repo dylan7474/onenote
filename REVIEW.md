@@ -157,6 +157,12 @@ _Status: README updated with the [MS-ONESTORE]/[MS-ONE] pointers in Phase 0._
 section colors. Map to/from that named palette on import/export so a round-trip
 preserves the user's section colors instead of randomizing them.
 
+_Status: done in Phase 3 (#33) — `SECTION_COLOR_PALETTE` (16 named colours);
+`nearestSectionColor()` / `snapSectionColor()` / `sectionColorName()`; the two
+`Math.random()` picks are now deterministic rotation; JSON import snaps a
+foreign hex to the nearest named colour. The Graph adapter (Phase 3, still
+open) will carry the name over the API._
+
 ## 9. Smaller importer bugs
 
 _Status: all four resolved in Phase 1 (#25, #29)._
