@@ -48,6 +48,10 @@ keep `doc.body.innerHTML` verbatim in a single block and only special-case
   already has per-block `x`/`y` (`index.html:2131`), but the importer forces
   everything into one block at `0,0`. Parse each top-level absolutely-positioned
   `<div>` into its own block with `x`/`y`/`width`.
+  _Status: done in Phase 1 (#26) — one block per outline, `px`/`pt` geometry
+  stored and round-tripped in JSON export; stray body content is kept as a
+  trailing block. The editor still stacks blocks vertically; using the stored
+  coordinates for layout is the free-form-canvas slice._
 - **Timestamps are fabricated.** `createdAt`/`updatedAt` are set to
   `new Date()` (`index.html:2122-2123`). OneNote HTML carries
   `<meta name="created">` / `<meta name="lastModified">`; Graph gives

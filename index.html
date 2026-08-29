@@ -1098,9 +1098,12 @@
                 </span>
             `).join('');
 
-            // Render Floating Blocks
+            // Render blocks. block.x / block.y / block.width are OneNote canvas
+            // coordinates, preserved on import and in JSON export; the current
+            // editor stacks blocks vertically and does not position by them yet
+            // (free-form canvas is a later slice).
             workspace.innerHTML = (page.blocks || []).map(block => `
-                <div id="${block.id}" class="note-block bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-4 mb-4 relative" style="margin-top: ${block.y || 0}px;">
+                <div id="${block.id}" class="note-block bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-4 mb-4 relative">
                     <div class="absolute -top-3 right-3 hidden group-hover:flex items-center space-x-1 bg-slate-200 dark:bg-slate-700 rounded px-1.5 py-0.5 text-xs text-slate-500">
                         <button onclick="deleteBlock('${block.id}')" class="hover:text-red-500 p-0.5"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
                     </div>
@@ -2134,6 +2137,54 @@
             }
         }
 
+        // OneNote's "Export as HTML" wraps each note container ("outline") in a
+        // top-level <div style="position:absolute;left:..;top:..;width:..">.
+        // Return one entry per outline, carrying its canvas geometry, plus a
+        // trailing entry for any stray body content. Returns null when the
+        // document has no positioned outlines (caller keeps the whole body as
+        // one block).
+        function extractPositionedBlocks(body) {
+            const isOutline = el => el.tagName === 'DIV'
+                && /position\s*:\s*absolute/i.test(el.getAttribute('style') || '');
+            const outlines = Array.from(body.children).filter(isOutline);
+            if (!outlines.length) return null;
+
+            const px = (style, prop) => {
+                const m = new RegExp(prop + '\\s*:\\s*(-?[\\d.]+)\\s*(px|pt)?', 'i').exec(style || '');
+                if (!m) return undefined;
+                const value = parseFloat(m[1]);
+                return Math.round(m[2] && m[2].toLowerCase() === 'pt' ? value * 96 / 72 : value);
+            };
+
+            const blocks = outlines.map(div => {
+                const style = div.getAttribute('style') || '';
+                return { content: div.innerHTML, x: px(style, 'left') ?? 0, y: px(style, 'top') ?? 0, width: px(style, 'width') };
+            });
+
+            const remainder = body.cloneNode(true);
+            Array.from(remainder.children).filter(isOutline).forEach(el => el.remove());
+            if (remainder.textContent.trim() || remainder.querySelector('img, table, hr, ul, ol, pre')) {
+                blocks.push({ content: remainder.innerHTML, x: 0, y: 0 });
+            }
+            return blocks;
+        }
+
+        // Block list for an imported page: one block per positioned outline
+        // (with geometry), or a single block when there are none. Content is
+        // sanitised here.
+        function blocksFromImportedDoc(doc, fallbackHtml) {
+            const stamp = Date.now();
+            const positioned = doc.body ? extractPositionedBlocks(doc.body) : null;
+            if (positioned) {
+                return positioned.map((b, i) => {
+                    const block = { id: `blk_${stamp}_${i}`, content: sanitizeHtml(b.content), x: b.x, y: b.y };
+                    if (b.width) block.width = b.width;
+                    return block;
+                });
+            }
+            return [{ id: `blk_${stamp}`, content: sanitizeHtml(doc.body ? doc.body.innerHTML : fallbackHtml), x: 0, y: 0 }];
+        }
+
         function parseJsonImport(file) {
             return new Promise((resolve) => {
                 const reader = new FileReader();
@@ -2172,7 +2223,6 @@
 
                     const pageTitle = doc.title || doc.querySelector('h1')?.innerText || file.name.replace(/\.[^/.]+$/, "");
                     const attachments = await extractOneNoteAttachments(doc);
-                    const bodyContent = sanitizeHtml(doc.body ? doc.body.innerHTML : htmlText);
 
                     const sec = getActiveSection();
                     if (sec) {
@@ -2183,14 +2233,7 @@
                             updatedAt: new Date().toISOString(),
                             tags: ['Imported OneNote'],
                             attachments,
-                            blocks: [
-                                {
-                                    id: 'blk_' + Date.now(),
-                                    content: bodyContent,
-                                    x: 0,
-                                    y: 0
-                                }
-                            ]
+                            blocks: blocksFromImportedDoc(doc, htmlText)
                         });
                         saveStateToStorage();
                     }
@@ -2242,14 +2285,7 @@
                         updatedAt: new Date().toISOString(),
                         tags: ['OneNote Archive'],
                         attachments,
-                        blocks: [
-                            {
-                                id: 'blk_' + Date.now(),
-                                content: sanitizeHtml(doc.body ? doc.body.innerHTML : htmlContent),
-                                x: 0,
-                                y: 0
-                            }
-                        ]
+                        blocks: blocksFromImportedDoc(doc, htmlContent)
                     });
                 }
 
