@@ -41,13 +41,13 @@ cleanup() {
 }
 trap cleanup EXIT
 
-cp "${SCRIPT_DIR}/index.html" "${SCRIPT_DIR}/server.js" "${BUILD_DIR}/"
+cp "${SCRIPT_DIR}/index.html" "${SCRIPT_DIR}/server.js" "${SCRIPT_DIR}/graph.js" "${BUILD_DIR}/"
 cp -r "${SCRIPT_DIR}/vendor" "${BUILD_DIR}/vendor"
 
 cat > "${BUILD_DIR}/Dockerfile" <<'DOCKER_EOF'
 FROM node:22-alpine
 WORKDIR /app
-COPY index.html server.js ./
+COPY index.html server.js graph.js ./
 COPY vendor ./vendor
 ENV DATA_FILE=/data/state.json
 VOLUME ["/data"]

@@ -1,6 +1,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const graph = require('./graph');
 
 const port = Number(process.env.PORT || 3020);
 const dataFile = process.env.DATA_FILE || path.join(__dirname, 'data', 'state.json');
@@ -114,6 +115,13 @@ const server = http.createServer((req, res) => {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     if (url.pathname === '/api/state' && req.method === 'GET') return readState(res);
     if (url.pathname === '/api/state' && req.method === 'PUT') return writeState(req, res);
+    if (url.pathname.startsWith('/api/graph')) {
+        graph.handle(req, res, url).catch(error => {
+            console.error('Graph handler error:', error);
+            if (!res.headersSent) sendJson(res, 500, { error: 'Graph handler error' });
+        });
+        return;
+    }
     if (url.pathname.startsWith('/vendor/') && req.method === 'GET') return serveVendorAsset(url.pathname, res);
 
     if ((url.pathname === '/' || url.pathname === '/index.html') && req.method === 'GET') {

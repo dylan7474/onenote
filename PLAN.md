@@ -94,14 +94,13 @@ section colors survive a round-trip. — **met** (#33–#35).
 **Why:** the actual supported interop path; depends on Phases 1–3 for the ingest
 pipeline and data model.
 
-| Task | REVIEW ref | Code touchpoints |
-| --- | --- | --- |
-| Register an Azure AD app; add MSAL.js browser sign-in ("Connect OneNote" near Import, `index.html:171`) | §1 | new auth module |
-| Server-side token exchange / Graph proxy endpoint (keep the client secret off the browser, handle CORS) | §1 | `server.js` — new `/api/graph/*` routes |
-| Import: walk `GET /me/onenote/notebooks` → sections → pages; fetch each page `content?includeIDs=true` and run it through the Phase 1 importer | §1 | reuse `extractOneNoteAttachments`, block parser |
-| Push: `POST /me/onenote/sections/{id}/pages` as `multipart/form-data` using the Phase 2 HTML serializer | §1, §3 | reuse `exportPageHtml()` |
-| Handle Graph throttling (429 / `Retry-After`), pagination (`@odata.nextLink`), and resource URLs needing auth headers | §1, §9 | proxy layer |
-| Map Graph `createdDateTime`/`lastModifiedDateTime`, `displayName` via the Phase 3 adapter | §4 | adapter |
+| Task | REVIEW ref | Status | Code touchpoints |
+| --- | --- | --- | --- |
+| Server-side OAuth (auth-code + PKCE) and a `/api/graph/*` Graph proxy, config-gated by `GRAPH_CLIENT_ID`, keeping the client secret off the browser | §1 | done (#37) | `graph.js` — `/config`, `/login`, `/callback`, `/logout`, `/v1.0/*` proxy; in-memory session keyed by `onenote_gsid` cookie; token refresh on expiry |
+| Browser sign-in UI — a "Connect OneNote" control near Import that drives `/api/graph/login` and reflects `/api/graph/config` | §1 | todo | `index.html` |
+| Import: walk `GET /me/onenote/notebooks` → sections → pages via the proxy; `content?includeIDs=true` through `notebookFromGraph()` | §1 | todo | reuse Phase 3 adapter |
+| Push: `POST /me/onenote/sections/{id}/pages` (`text/html`) using `pageToGraphContent()` | §1, §3 | todo | reuse Phase 3 adapter |
+| Handle Graph throttling (429 / `Retry-After`), pagination (`@odata.nextLink`) | §1, §9 | todo | proxy layer |
 
 **Done when:** a signed-in user can import a real Microsoft 365 notebook and push
 a page back that appears correctly in OneNote.
