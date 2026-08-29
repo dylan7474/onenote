@@ -28,6 +28,11 @@ if [ ! -f "${SCRIPT_DIR}/server.js" ]; then
   exit 1
 fi
 
+if [ ! -f "${SCRIPT_DIR}/vendor/dompurify.min.js" ]; then
+  echo "Error: vendor/ assets were not found in ${SCRIPT_DIR}."
+  exit 1
+fi
+
 echo "=== Deploying ${PROJECT_NAME} on http://localhost:${PORT_ARG} ==="
 
 BUILD_DIR="$(mktemp -d)"
@@ -37,11 +42,13 @@ cleanup() {
 trap cleanup EXIT
 
 cp "${SCRIPT_DIR}/index.html" "${SCRIPT_DIR}/server.js" "${BUILD_DIR}/"
+cp -r "${SCRIPT_DIR}/vendor" "${BUILD_DIR}/vendor"
 
 cat > "${BUILD_DIR}/Dockerfile" <<'DOCKER_EOF'
 FROM node:22-alpine
 WORKDIR /app
 COPY index.html server.js ./
+COPY vendor ./vendor
 ENV DATA_FILE=/data/state.json
 VOLUME ["/data"]
 CMD ["node", "server.js"]
