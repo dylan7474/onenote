@@ -34,16 +34,16 @@ import/export behavior is pinned by tests. — **met.**
 **Why:** highest-value data-loss fixes; the importer is already ~80% structured
 for this.
 
-| Task | REVIEW ref | Code touchpoints |
-| --- | --- | --- |
-| Resolve `<img src>` on import — pull bytes from ZIP or `data:` URL, rewrite to data URL or stored attachment; extend `resolveFile` to walk `img[src]` alongside `object[data-attachment]` | §2 | `extractOneNoteAttachments` (`index.html:2053-2075`), both ZIP/HTML callers |
-| Parse top-level `position:absolute` outline `<div>`s into separate blocks with `x`/`y`/`width` instead of one block at `0,0` | §2 | `parseHtmlImport` (`index.html:2126-2133`), `parseZipImport` (`index.html:2180-2187`) |
-| Read `<meta name="created">` / `lastModified` for `createdAt`/`updatedAt` | §2 | `index.html:2122-2123`, `index.html:2176-2177` |
-| Import `<p data-tag="to-do｜important｜question｜…">` → checkbox UI + tag chips | §5 | new mapping in the HTML parsers; tag model at `index.html:331`, `index.html:1080` |
-| Split whole-section HTML export (one doc, `<h1>`-delimited) into multiple pages | §2 | `parseHtmlImport` (`index.html:2113-2134`) |
-| Rework ZIP subpage-level detection — test against a real export (flat `Notebook/Section/Page.html`, subpages by filename), replace the folder-depth heuristic | §4 | `index.html:2175` |
-| Fix importer bugs: `decodeDataUrl` non-base64 double-decode; ZIP asset basename fallback across `*_files/`; base64 size math padding | §9 | `index.html:2049`, `index.html:2164`, `index.html:2063` |
-| Detect Graph-host `<object data>` URLs and surface "requires sign-in" instead of an empty chip | §9 | `extractOneNoteAttachments` |
+| Task | REVIEW ref | Status | Code touchpoints |
+| --- | --- | --- | --- |
+| Resolve `<img src>` on import — inline ZIP-resident / `data:` images as data URLs; leave remote and missing refs alone | §2 | done (#25) | `inlineImages()` in `extractOneNoteAttachments`; `parseZipImport` `resolveFile` now types by extension |
+| Parse top-level `position:absolute` outline `<div>`s into separate blocks with `x`/`y`/`width` instead of one block at `0,0` | §2 | todo | `parseHtmlImport`, `parseZipImport` |
+| Read `<meta name="created">` / `lastModified` for `createdAt`/`updatedAt` | §2 | todo (test stubbed) | `parseHtmlImport`, `parseZipImport` |
+| Import `<p data-tag="to-do｜important｜question｜…">` → checkbox UI + tag chips | §5 | todo | new mapping in the HTML parsers; tag model at `index.html:331`, `index.html:1080` |
+| Split whole-section HTML export (one doc, `<h1>`-delimited) into multiple pages | §2 | todo | `parseHtmlImport` |
+| Rework ZIP subpage-level detection — flat `Notebook/Section/Page.html`, subpages by filename — replace the folder-depth heuristic | §4 | todo | `parseZipImport` |
+| Fix importer bugs: `decodeDataUrl` malformed-escape crash (**done #25**); ZIP asset basename fallback across `*_files/`; base64 size math padding | §9 | partial (#25) | `decodeDataUrl` done; `resolveFile` basename fallback + size math todo |
+| Detect Graph-host `<object data>` URLs and surface "requires sign-in" instead of an empty chip | §9 | todo | `extractOneNoteAttachments` |
 
 **Done when:** a real OneNote HTML page and ZIP export import with images intact,
 correct timestamps, checkboxes/tags mapped, and layout approximating the

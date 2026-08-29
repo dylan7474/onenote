@@ -135,16 +135,18 @@ test('ZIP import: section from filename, pages sorted, folder depth -> level', a
     assert.match(pageOne.blocks[0].content, /data-tag="to-do"/);
 });
 
-test('ZIP import: <img> whose bytes live in a *_files/ folder is left unresolved (REVIEW §2)', async (t) => {
+test('ZIP import: <img> whose bytes live in a *_files/ folder is inlined as a data URL (REVIEW §2)', async (t) => {
     const { window, dispose } = createApp();
     t.after(dispose);
     seedNotebook(window);
 
     await importZipFixture(window, 'My Section.zip', 'zip-src');
-    const pageOne = getState(window).notebooks[0].sections.at(-1).pages[0];
+    const html = getState(window).notebooks[0].sections.at(-1).pages[0].blocks[0].content;
 
-    // CURRENT: the src is kept verbatim; the image is not inlined or attached.
-    assert.match(pageOne.blocks[0].content, /<img[^>]+src="Page One_files\/diagram\.png"/);
+    assert.match(html, /<img[^>]+src="data:image\/png;base64,[A-Za-z0-9+/=]+"/, 'resolved image embedded');
+    assert.doesNotMatch(html, /src="Page One_files\/diagram\.png"/, 'original relative src replaced');
+    // A referenced file that is not in the ZIP is left untouched, not dropped.
+    assert.match(html, /<img[^>]+src="Page One_files\/missing\.png"/);
 });
 
 test('decodeDataUrl: base64 passthrough, plain text re-encoded, non-data-URL null', (t) => {
@@ -162,8 +164,10 @@ test('decodeDataUrl: base64 passthrough, plain text re-encoded, non-data-URL nul
     assert.equal(window.decodeDataUrl('https://example.com/x.png'), null);
 });
 
-test('decodeDataUrl: a bare % in a non-base64 data URL currently throws (REVIEW §9)', (t) => {
+test('decodeDataUrl: a malformed escape no longer aborts the import (REVIEW §9)', (t) => {
     const { window, dispose } = createApp();
     t.after(dispose);
-    assert.throws(() => window.decodeDataUrl('data:text/plain,100%'), { name: 'URIError' });
+    const out = window.decodeDataUrl('data:text/plain,100%');
+    assert.equal(out.type, 'text/plain');
+    assert.equal(window.atob(out.data), '100%', 'raw body kept when decodeURIComponent fails');
 });

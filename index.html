@@ -2058,10 +2058,25 @@
         function decodeDataUrl(value) {
             const match = String(value || '').match(/^data:([^;,]*)(;base64)?,(.*)$/s);
             if (!match) return null;
+            const type = match[1] || 'application/octet-stream';
+            if (match[2]) return { type, data: match[3] };
+            // Non-base64 payloads are percent-encoded text. A malformed escape
+            // (a bare "%") makes decodeURIComponent throw; fall back to the raw
+            // body rather than aborting the whole import.
+            let text = match[3];
+            try { text = decodeURIComponent(match[3]); } catch (error) { /* keep raw */ }
+            return { type, data: btoa(unescape(encodeURIComponent(text))) };
+        }
+
+        // Best-effort MIME type from a file name/extension, for bytes pulled out
+        // of a ZIP where the container gives us no type of its own.
+        function guessMimeFromName(name) {
+            const ext = String(name || '').split(/[?#]/, 1)[0].split('.').pop().toLowerCase();
             return {
-                type: match[1] || 'application/octet-stream',
-                data: match[2] ? match[3] : btoa(unescape(encodeURIComponent(decodeURIComponent(match[3]))))
-            };
+                png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
+                webp: 'image/webp', bmp: 'image/bmp', svg: 'image/svg+xml',
+                pdf: 'application/pdf', txt: 'text/plain'
+            }[ext] || null;
         }
 
         async function extractOneNoteAttachments(doc, resolveFile) {
@@ -2085,7 +2100,38 @@
                 link.textContent = name;
                 node.replaceWith(link);
             }
+
+            await inlineImages(doc, resolveFile);
             return attachments;
+        }
+
+        // Turn <img> references into self-contained data URLs so imported pages
+        // render without their original file tree. Already-inline data: URLs are
+        // left alone; a src that can be resolved from the import (e.g. a file in
+        // the ZIP, via resolveFile) is embedded; anything else (an absolute
+        // http(s) URL, a missing file) is left untouched.
+        async function inlineImages(doc, resolveFile) {
+            for (const img of Array.from(doc.querySelectorAll('img'))) {
+                const source = img.getAttribute('src')
+                    || img.getAttribute('data-fullres-src')
+                    || img.getAttribute('data-render-src')
+                    || '';
+                if (!source || /^data:/i.test(source)) continue;
+
+                let payload = decodeDataUrl(source);
+                if (!payload && resolveFile && !/^https?:/i.test(source)) {
+                    payload = await resolveFile(source);
+                }
+                if (!payload?.data) continue;
+
+                const type = payload.type && payload.type !== 'application/octet-stream'
+                    ? payload.type
+                    : (guessMimeFromName(source) || 'image/png');
+                img.setAttribute('src', `data:${type};base64,${payload.data}`);
+                for (const attr of ['data-fullres-src', 'data-render-src', 'data-render-original-src', 'srcset']) {
+                    img.removeAttribute(attr);
+                }
+            }
         }
 
         function parseJsonImport(file) {
@@ -2174,10 +2220,15 @@
                     const pageTitle = doc.title || filename.replace(/^.*[\\\/]/, '').replace(/\.[^/.]+$/, "");
                     const directory = filename.includes('/') ? filename.slice(0, filename.lastIndexOf('/') + 1) : '';
                     const attachments = await extractOneNoteAttachments(doc, async source => {
-                        const cleanSource = decodeURIComponent(source.split(/[?#]/, 1)[0]).replace(/^\.\//, '');
+                        const raw = source.split(/[?#]/, 1)[0].replace(/^\.\//, '');
+                        let cleanSource = raw;
+                        try { cleanSource = decodeURIComponent(raw); } catch (error) { /* keep raw */ }
                         const entry = zip.file(directory + cleanSource) || zip.file(cleanSource);
                         if (!entry) return null;
-                        return { type: 'application/octet-stream', data: await entry.async('base64') };
+                        return {
+                            type: guessMimeFromName(cleanSource) || 'application/octet-stream',
+                            data: await entry.async('base64')
+                        };
                     });
 
                     importedPages.push({
