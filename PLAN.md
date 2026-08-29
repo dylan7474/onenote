@@ -57,15 +57,19 @@ each against synthetic fixtures).
 **Why:** first real path *back into* OneNote; Phase 1 fixtures become round-trip
 test cases.
 
-| Task | REVIEW ref | Code touchpoints |
-| --- | --- | --- |
-| Export `data-tag` attributes instead of `<input type=checkbox onclick=…>` (also removes inline handlers) | §5 | sample data `index.html:740`, `index.html:2235`; new serializer |
-| "Export page/section as OneNote-compatible HTML" — Graph supported-input subset: `<html><head><title>`, `data-tag`, tables, `<img>` as data URLs, `<object data-attachment>` | §3 | new `exportPageHtml()` alongside `exportCurrentNotebook` (`index.html:2259`); File menu `index.html:187` |
-| "Copy page as HTML" to clipboard (`text/html`) for direct paste into desktop OneNote | §3 | new toolbar/menu action |
-| Self round-trip test: export → re-import → assert structural equality | — | `test/` |
+| Task | REVIEW ref | Status | Code touchpoints |
+| --- | --- | --- | --- |
+| Export `data-tag` attributes instead of `<input type=checkbox>` | §5 | done (#31) | `blockContentToOneNoteHtml()` — checkbox → `data-tag="to-do"` / `to-do:completed` on its block-level host, `<input>` removed |
+| "Export page as OneNote-compatible HTML" — `<head>` meta + one `position:absolute` `<div>` per block, tables, `<img>` data URLs, `<object data-attachment>` | §3 | done (#31) | `pageToOneNoteHtml()` / `exportActivePageHtml()`; File menu "Export page as HTML" |
+| "Copy page as HTML" to clipboard (`text/html`) for direct paste into desktop OneNote | §3 | todo | new toolbar/menu action over `pageToOneNoteHtml()` |
+| Self round-trip test: export → re-import → assert structural equality | — | done (#31) | `test/export.test.js` |
 
 **Done when:** a page exported as HTML pastes/imports into real OneNote with
-formatting, checkboxes, tables, and images preserved.
+formatting, checkboxes, tables, and images preserved. — page download + self
+round-trip landed (#31); clipboard "Copy as HTML" and section export still open.
+
+_Not serialized: non-`to-do` page tag chips (Important, Question, …) — OneNote's
+content HTML has no page-level tag slot; the `to-do` checkbox does round-trip._
 
 ---
 

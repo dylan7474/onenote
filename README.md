@@ -80,6 +80,14 @@ live interoperability.
 [MS-ONESTORE]: https://learn.microsoft.com/openspecs/office_file_formats/ms-onestore/
 [MS-ONE]: https://learn.microsoft.com/openspecs/office_file_formats/ms-one/
 
+**File → Export page as HTML** writes the active page in the "supported input
+HTML" shape the Microsoft Graph OneNote API accepts: a `<head>` with
+created/modified meta, one absolutely-positioned `<div>` per note block,
+checkboxes as `<p data-tag="to-do">`, and attachments as `<object
+data-attachment>` with embedded data URLs. Re-importing that file reproduces
+the page. (Page-level tag chips other than the `to-do` checkbox are not carried
+— OneNote's content HTML has no page-tag slot.)
+
 ## Deploy with Docker
 
 ```bash
@@ -114,8 +122,9 @@ specific legacy desktop release.
   multi-cell selection, merge/split, drag resizing, even distribution, sorting,
   header and banded-row styles, cell shading, keyboard navigation, and deletion.
 - A pen layer with selectable color and width, saved with the page.
-- JSON notebook export; JSON, HTML/HTM, and ZIP-of-HTML import, preserving
-  supported OneNote subpage levels from JSON metadata and ZIP folders.
+- JSON notebook export and per-page OneNote-compatible HTML export; JSON,
+  HTML/HTM, and ZIP-of-HTML import, preserving supported OneNote subpage levels,
+  outline geometry, `<meta>` timestamps, `data-tag` markup, and inlined images.
 - Debounced server-side JSON persistence, including a one-time migration from
   the older browser-local state.
 

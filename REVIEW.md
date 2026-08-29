@@ -79,6 +79,10 @@ There is no way to get content into real OneNote. Add:
   files. Same shape the importer reads, so it also gives lossless self
   round-trip.
 
+_Status: page export done in Phase 2 (#31) — `pageToOneNoteHtml()` + a "Export
+page as HTML" menu item; `test/export.test.js` verifies an export → re-import
+round-trip. Clipboard "Copy page as HTML" and section export are still open._
+
 ## 4. Align the data model with Graph's schema
 
 Small renames now avoid a painful adapter later:
@@ -114,7 +118,8 @@ which also line up with the three page tags (Important / Question / Idea,
   into a checkbox (keeping the attribute for round-tripping) and maps the other
   values to page chips (known set to friendly labels, unknown ones
   title-cased)._
-- Export: emit `data-tag` instead of `<input>`. _Still pending — Phase 2._
+- Export: emit `data-tag` instead of `<input>`. _Done in Phase 2 (#31) —
+  `blockContentToOneNoteHtml()`._
 - Bonus: the inline `onclick` handlers are already gone (Phase 0 #23).
 
 ## 6. Sanitize before ingesting real OneNote HTML
