@@ -65,7 +65,9 @@ as its own note block (keeping its canvas coordinates), and page
 created/modified times are taken from the document's `<meta name="created">` /
 `<meta name="lastModified">` when present. `data-tag` markup is mapped on
 import: `to-do` becomes a checkbox, and the other tag values (`important`,
-`question`, …) become page tag chips. Native `.one` and `.onepkg` files
+`question`, …) become page tag chips. An `<object>` attachment that points at a
+remote URL (e.g. a Microsoft Graph resource) is shown as an "unavailable"
+placeholder, since loading it needs an authenticated request. Native `.one` and `.onepkg` files
 remain unsupported. The formats themselves are documented by
 Microsoft ([MS-ONESTORE] for the revision-store file, [MS-ONE] for the content
 schema; `.onepkg` is a CAB archive of `.one` files), so a read-only importer is

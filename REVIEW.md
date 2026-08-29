@@ -147,22 +147,22 @@ preserves the user's section colors instead of randomizing them.
 
 ## 9. Smaller importer bugs
 
-- `decodeDataUrl` non-base64 branch (`index.html:2049`):
-  `btoa(unescape(encodeURIComponent(decodeURIComponent(match[3]))))`
-  double-decodes and corrupts any `data:text/...` URL containing `%`. Use
-  `TextEncoder` plus proper base64.
-- ZIP attachment resolution (`index.html:2164`) only tries
-  `directory + cleanSource` and bare `cleanSource`; OneNote often stores assets
-  in a sibling `*_files/` or `attachments/` folder — add a basename fallback
-  search across `zip.files`.
-- `extractOneNoteAttachments` size calc `payload.data.length * 3 / 4`
-  (`index.html:2063`) ignores base64 padding — off by up to 2 bytes; harmless
-  but `formatBytes` then displays it.
-- Graph-sourced `<object data-attachment>` has
-  `data="https://graph.microsoft.com/.../resources/..."` needing an auth
-  header — `resolveFile` cannot fetch it. Detect the Graph host and surface
-  "attachment requires sign-in" rather than silently producing a chip with no
-  payload.
+_Status: all four resolved in Phase 1 (#25, #29)._
+
+- `decodeDataUrl` non-base64 branch double-decoded and threw on a malformed
+  escape. **Fixed (#25)** — `decodeURIComponent` is guarded; a bare `%` falls
+  back to the raw body instead of aborting the import.
+- ZIP attachment resolution only tried `directory + cleanSource` and bare
+  `cleanSource`. **Fixed (#29)** — `resolveFile` now falls back to a zip entry
+  with a matching (unique) basename, covering `*_files/` and `attachments/`.
+- `extractOneNoteAttachments` size calc ignored base64 padding. **Fixed
+  (#29)** — `base64ByteLength()` subtracts the `=` padding.
+- Graph-sourced `<object data-attachment>` with a
+  `https://graph.microsoft.com/.../resources/...` URL cannot be fetched at
+  import time. **Fixed (#29)** — it becomes a dimmed
+  `inline-attachment attachment-unresolved` span carrying
+  `data-attachment-source` and a "(unavailable)" label, with no dangling
+  attachment id. Loading it for real is the Phase 4 Graph slice.
 
 ---
 
