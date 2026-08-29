@@ -111,7 +111,9 @@ specific legacy desktop release.
 ### Available now
 
 - Notebook → colored section → page hierarchy, with create/delete/navigation,
-  two levels of subpages, and collapsible subpage groups.
+  two levels of subpages, and collapsible subpage groups. Section colors come
+  from a fixed 16-colour named palette (new sections cycle through it; imported
+  colors snap to the nearest name).
 - Vertical or horizontal section navigation and light/dark themes.
 - Page title, created/updated timestamps, page filtering, and the Important,
   Question, and Idea page tags.
