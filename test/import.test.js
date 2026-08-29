@@ -23,7 +23,7 @@ test('HTML import: page shape and sanitisation', async (t) => {
     const pages = getState(window).notebooks[0].sections[0].pages;
     const page = pages[0]; // parseHtmlImport unshifts
     assert.equal(page.title, 'Quarterly Planning', 'title from <title>');
-    assert.deepEqual(plain(page.tags), ['Imported OneNote']);
+    assert.deepEqual(plain(page.tags), ['Imported OneNote', 'Important'], 'data-tag="important" -> chip');
     // One positioned outline + stray body content outside it -> two blocks.
     assert.equal(page.blocks.length, 2);
 
@@ -34,6 +34,9 @@ test('HTML import: page shape and sanitisation', async (t) => {
     assert.doesNotMatch(html, /onerror/i);
     assert.match(outline, /data-tag="to-do"/, 'data-tag preserved');
     assert.match(outline, /data-tag="to-do:completed"/);
+    // to-do paragraphs gain a checkbox; the completed one is checked.
+    assert.match(outline, /<p data-tag="to-do"><input type="checkbox"[^>]*>\s*Draft the departmental budget/);
+    assert.match(outline, /<p data-tag="to-do:completed"><input type="checkbox" checked[^>]*>\s*Book the offsite venue/);
     assert.match(outline, /<table/i);
     assert.match(outline, /<img[^>]+src="data:image\/png/i, 'inline data-URL image kept');
     assert.doesNotMatch(html, /<object/i, '<object> replaced by a span');
@@ -76,7 +79,29 @@ test('HTML import: a document with no positioned outlines stays one block', asyn
     assert.equal(page.blocks[0].x, 0);
     assert.equal(page.blocks[0].y, 0);
     assert.equal(page.blocks[0].width, undefined);
-    assert.match(page.blocks[0].content, /data-tag="to-do"/);
+    assert.match(page.blocks[0].content, /data-tag="to-do"><input type="checkbox"/);
+    assert.deepEqual(plain(page.tags), ['Imported OneNote'], 'a bare to-do adds no chip');
+});
+
+test('HTML import: data-tag maps to checkboxes and page chips (REVIEW §5)', async (t) => {
+    const { window, dispose } = createApp();
+    t.after(dispose);
+    seedNotebook(window);
+
+    await window.parseHtmlImport(fixtureFile(window, 'onenote-tags.html', 'text/html', 'onenote-tags.html'));
+    const page = getState(window).notebooks[0].sections[0].pages[0];
+
+    assert.deepEqual(
+        plain(page.tags).slice().sort(),
+        ['Critical', 'Important', 'Imported OneNote', 'Question', 'Web Site To Visit'],
+        'known tags mapped to friendly labels, unknown tag title-cased, deduped',
+    );
+
+    const html = page.blocks[0].content;
+    assert.match(html, /<p data-tag="to-do"><input type="checkbox"[^>]*>\s*Open task/);
+    assert.match(html, /<p data-tag="to-do:completed"><input type="checkbox" checked[^>]*>\s*Finished task/);
+    // comma-separated list on one element yields both chips, element keeps its attr
+    assert.match(html, /<p data-tag="important, critical">Both at once\.<\/p>/);
 });
 
 test('HTML import: embedded <object data-attachment> becomes a stored attachment', async (t) => {
