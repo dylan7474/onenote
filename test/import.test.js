@@ -93,7 +93,7 @@ test('HTML import: embedded <object data-attachment> becomes a stored attachment
     assert.ok(page.attachments[0].data, 'base64 payload stored');
 });
 
-test('HTML import: creation date is fabricated, not read from <meta name="created">', async (t) => {
+test('HTML import: reads <meta name="created"> / "lastModified" (REVIEW §2)', async (t) => {
     const { window, dispose } = createApp();
     t.after(dispose);
     seedNotebook(window);
@@ -101,17 +101,24 @@ test('HTML import: creation date is fabricated, not read from <meta name="create
     await window.parseHtmlImport(fixtureFile(window, 'onenote-page.html', 'text/html', 'onenote-page.html'));
     const page = getState(window).notebooks[0].sections[0].pages[0];
 
-    // CURRENT: set to import time.
-    assert.equal(new Date(page.createdAt).getUTCFullYear(), new Date().getUTCFullYear());
+    assert.equal(page.createdAt, '2019-06-14T17:30:00.000Z', 'created meta (offset applied)');
+    assert.equal(page.updatedAt, '2019-07-02T23:05:12.000Z', 'lastModified meta');
 });
 
-test('HTML import: reads <meta name="created"> (REVIEW §2)', { todo: true }, async (t) => {
+test('HTML import: missing / partial date meta falls back to import time', async (t) => {
     const { window, dispose } = createApp();
     t.after(dispose);
+    const nowYear = new Date().getUTCFullYear();
+
     seedNotebook(window);
-    await window.parseHtmlImport(fixtureFile(window, 'onenote-page.html', 'text/html', 'onenote-page.html'));
-    const page = getState(window).notebooks[0].sections[0].pages[0];
-    assert.equal(new Date(page.createdAt).toISOString(), '2019-06-14T17:30:00.000Z');
+    await window.parseHtmlImport(fixtureFile(window, 'onenote-multi-outline.html', 'text/html', 'onenote-multi-outline.html'));
+    let page = getState(window).notebooks[0].sections[0].pages[0];
+    assert.equal(page.createdAt, '2020-02-20T09:00:00.000Z', 'created meta honoured');
+    assert.equal(new Date(page.updatedAt).getUTCFullYear(), nowYear, 'no lastModified -> now');
+
+    await window.parseHtmlImport(fixtureFile(window, 'plain.html', 'text/html', 'plain.html'));
+    page = getState(window).notebooks[0].sections[0].pages[0];
+    assert.equal(new Date(page.createdAt).getUTCFullYear(), nowYear, 'no meta at all -> now');
 });
 
 test('JSON import: single-notebook backup is appended, subpage levels inferred', async (t) => {
@@ -169,6 +176,8 @@ test('ZIP import: section from filename, pages sorted, folder depth -> level', a
     assert.deepEqual(plain(section.pages.map((p) => p.level)), [0, 0, 1]);
 
     const pageOne = section.pages[0];
+    assert.equal(pageOne.createdAt, '2022-01-10T08:00:00.000Z', 'created meta read from the zipped HTML');
+    assert.equal(new Date(section.pages[1].createdAt).getUTCFullYear(), new Date().getUTCFullYear(), 'Page Two has no meta -> now');
     assert.equal(pageOne.attachments.length, 1, 'sibling <object> payload resolved from the zip');
     assert.equal(pageOne.attachments[0].name, 'attachment.txt');
     assert.match(pageOne.blocks[0].content, /class="inline-attachment"/);

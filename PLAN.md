@@ -38,7 +38,7 @@ for this.
 | --- | --- | --- | --- |
 | Resolve `<img src>` on import — inline ZIP-resident / `data:` images as data URLs; leave remote and missing refs alone | §2 | done (#25) | `inlineImages()` in `extractOneNoteAttachments`; `parseZipImport` `resolveFile` now types by extension |
 | Parse top-level `position:absolute` outline `<div>`s into separate blocks with `x`/`y`/`width` instead of one block at `0,0` | §2 | done (#26) | `extractPositionedBlocks()` / `blocksFromImportedDoc()`; `px`/`pt` parsed; stray body content kept as a trailing block. Geometry is stored + round-trips in JSON export; the editor still stacks vertically (free-form canvas is later). |
-| Read `<meta name="created">` / `lastModified` for `createdAt`/`updatedAt` | §2 | todo (test stubbed) | `parseHtmlImport`, `parseZipImport` |
+| Read `<meta name="created">` / `lastModified` for `createdAt`/`updatedAt` | §2 | done (#27) | `readDocDates()`; case-insensitive meta lookup, offset-aware parse, falls back to import time |
 | Import `<p data-tag="to-do｜important｜question｜…">` → checkbox UI + tag chips | §5 | todo | new mapping in the HTML parsers; tag model at `index.html:331`, `index.html:1080` |
 | Split whole-section HTML export (one doc, `<h1>`-delimited) into multiple pages | §2 | todo | `parseHtmlImport` |
 | Rework ZIP subpage-level detection — flat `Notebook/Section/Page.html`, subpages by filename — replace the folder-depth heuristic | §4 | todo | `parseZipImport` |

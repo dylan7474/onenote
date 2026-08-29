@@ -2185,6 +2185,26 @@
             return [{ id: `blk_${stamp}`, content: sanitizeHtml(doc.body ? doc.body.innerHTML : fallbackHtml), x: 0, y: 0 }];
         }
 
+        // OneNote's "Export as HTML" records page times in the document head as
+        // <meta name="created"> / <meta name="lastModified"> (ISO 8601 with a
+        // 7-digit fraction and an offset). Read them; fall back to import time
+        // for anything missing or unparseable.
+        function readDocDates(doc) {
+            const now = new Date().toISOString();
+            const readMeta = names => {
+                for (const name of names) {
+                    const content = doc.querySelector(`meta[name="${name}" i]`)?.getAttribute('content');
+                    const parsed = content && new Date(content);
+                    if (parsed && !Number.isNaN(parsed.getTime())) return parsed.toISOString();
+                }
+                return now;
+            };
+            return {
+                createdAt: readMeta(['created', 'creationTime', 'date']),
+                updatedAt: readMeta(['lastModified', 'last-modified', 'modified'])
+            };
+        }
+
         function parseJsonImport(file) {
             return new Promise((resolve) => {
                 const reader = new FileReader();
@@ -2223,14 +2243,15 @@
 
                     const pageTitle = doc.title || doc.querySelector('h1')?.innerText || file.name.replace(/\.[^/.]+$/, "");
                     const attachments = await extractOneNoteAttachments(doc);
+                    const { createdAt, updatedAt } = readDocDates(doc);
 
                     const sec = getActiveSection();
                     if (sec) {
                         sec.pages.unshift({
                             id: 'page_' + Date.now() + Math.random().toString(36).substr(2, 4),
                             title: pageTitle,
-                            createdAt: new Date().toISOString(),
-                            updatedAt: new Date().toISOString(),
+                            createdAt,
+                            updatedAt,
                             tags: ['Imported OneNote'],
                             attachments,
                             blocks: blocksFromImportedDoc(doc, htmlText)
@@ -2281,8 +2302,7 @@
                         // pages as nested folders. Preserve that hierarchy,
                         // while respecting OneNote's two subpage levels.
                         level: Math.min(2, Math.max(0, filename.split('/').filter(Boolean).length - 1 - commonDepth)),
-                        createdAt: new Date().toISOString(),
-                        updatedAt: new Date().toISOString(),
+                        ...readDocDates(doc),
                         tags: ['OneNote Archive'],
                         attachments,
                         blocks: blocksFromImportedDoc(doc, htmlContent)
