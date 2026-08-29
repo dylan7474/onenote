@@ -125,7 +125,8 @@ function createApp({ onFetch } = {}) {
     window.eval(
         MAIN_SCRIPT +
         '\n;window.__getState = () => state;' +
-        '\n;window.__setState = (next) => { state = next; };'
+        '\n;window.__setState = (next) => { state = next; };' +
+        '\n;window.graphState = graphState;'
     );
 
     const dispose = () => {

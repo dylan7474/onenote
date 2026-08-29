@@ -464,6 +464,14 @@
                 <input type="file" id="fileInput" onchange="handleFileImport(event)" accept=".json,.html,.htm,.zip" class="hidden" multiple>
             </div>
 
+            <div id="graphImportSection" class="hidden border-t border-slate-200 dark:border-slate-700 pt-4 space-y-3">
+                <div class="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    <i data-lucide="cloud" class="w-4 h-4 text-onenote-600 dark:text-purple-400"></i>
+                    <span>Microsoft OneNote (live)</span>
+                </div>
+                <div id="graphImportBody" class="text-xs text-slate-500 dark:text-slate-400 space-y-2"></div>
+            </div>
+
             <div class="border-t border-slate-200 dark:border-slate-700 pt-4 flex items-center justify-between">
                 <button onclick="loadSampleOneNoteData()" class="flex items-center space-x-1 text-xs text-onenote-600 dark:text-purple-400 font-medium hover:underline">
                     <i data-lucide="sparkles" class="w-4 h-4"></i>
@@ -2082,10 +2090,155 @@
         // Data Import Modal & Processors
         function openImportModal() {
             document.getElementById('importModal').classList.remove('hidden');
+            refreshGraphStatus();
         }
 
         function closeImportModal() {
             document.getElementById('importModal').classList.add('hidden');
+        }
+
+        // --- Microsoft Graph OneNote: connect + import ----------------------
+
+        const graphState = { enabled: false, connected: false, notebooks: [], busy: false };
+
+        async function refreshGraphStatus() {
+            try {
+                const res = await fetch('/api/graph/config', { cache: 'no-store' });
+                const cfg = res.ok ? await res.json() : { enabled: false, connected: false };
+                graphState.enabled = !!cfg.enabled;
+                graphState.connected = !!cfg.connected;
+            } catch (error) {
+                graphState.enabled = false;
+                graphState.connected = false;
+            }
+            if (graphState.enabled && graphState.connected && !graphState.busy) {
+                await loadGraphNotebooks();
+            } else {
+                renderGraphImport();
+            }
+        }
+
+        function renderGraphImport() {
+            const section = document.getElementById('graphImportSection');
+            const body = document.getElementById('graphImportBody');
+            if (!graphState.enabled) { section.classList.add('hidden'); return; }
+            section.classList.remove('hidden');
+
+            if (!graphState.connected) {
+                body.innerHTML = `<p>Sign in to import notebooks straight from your Microsoft account.</p>
+                    <button onclick="connectGraph()" class="px-3 py-1.5 bg-onenote-600 hover:bg-onenote-700 text-white text-xs font-semibold rounded-lg transition">Connect to OneNote</button>`;
+            } else if (graphState.busy) {
+                body.innerHTML = `<p class="flex items-center gap-2"><i data-lucide="loader" class="w-4 h-4 animate-spin"></i>Importing from OneNote…</p>`;
+            } else {
+                const options = graphState.notebooks.map(n => `<option value="${escapeHtml(n.id)}">${escapeHtml(n.displayName || 'Untitled notebook')}</option>`).join('');
+                body.innerHTML = `<p class="text-green-600 dark:text-green-400 flex items-center gap-1"><i data-lucide="check-circle" class="w-4 h-4"></i>Connected.</p>
+                    <div class="flex items-center gap-2">
+                        <select id="graphNotebookSelect" class="flex-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 text-xs">${options || '<option value="">No notebooks</option>'}</select>
+                        <button onclick="loadGraphNotebooks()" class="px-2 py-1 text-xs rounded bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600" title="Refresh list"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i></button>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button onclick="importSelectedGraphNotebook()" ${graphState.notebooks.length ? '' : 'disabled'} class="px-3 py-1.5 bg-onenote-600 hover:bg-onenote-700 disabled:opacity-40 text-white text-xs font-semibold rounded-lg transition">Import selected notebook</button>
+                        <button onclick="disconnectGraph()" class="px-3 py-1.5 text-xs rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600">Disconnect</button>
+                    </div>`;
+            }
+            lucide.createIcons();
+        }
+
+        function connectGraph() {
+            window.location.href = '/api/graph/login';
+        }
+
+        async function disconnectGraph() {
+            try { await fetch('/api/graph/logout', { method: 'POST' }); } catch (error) { /* ignore */ }
+            graphState.connected = false;
+            graphState.notebooks = [];
+            renderGraphImport();
+        }
+
+        // Proxied Graph GET with 429 back-off. Absolute graph.microsoft.com URLs
+        // (e.g. @odata.nextLink) are rewritten to go through the proxy.
+        async function graphGet(pathOrUrl, { accept = 'application/json', tries = 3 } = {}) {
+            let path = pathOrUrl.replace(/^https:\/\/graph\.microsoft\.com/i, '');
+            if (!path.startsWith('/api/graph')) path = '/api/graph' + (path.startsWith('/') ? '' : '/') + path;
+            for (let attempt = 0; attempt < tries; attempt++) {
+                const res = await fetch(path, { headers: { Accept: accept }, cache: 'no-store' });
+                if (res.status === 429) {
+                    const header = res.headers.get('Retry-After');
+                    const parsed = (header == null || header === '') ? NaN : Number(header);
+                    const wait = Number.isFinite(parsed) ? parsed : 5;
+                    await new Promise(r => setTimeout(r, wait * 1000));
+                    continue;
+                }
+                if (res.status === 401) { graphState.connected = false; throw new Error('Not connected to OneNote'); }
+                if (!res.ok) throw new Error(`Graph request failed (${res.status})`);
+                return accept.includes('json') ? res.json() : res.text();
+            }
+            throw new Error('Graph is throttling requests; try again shortly.');
+        }
+
+        async function graphGetAll(path) {
+            const items = [];
+            let next = path;
+            while (next) {
+                const page = await graphGet(next);
+                items.push(...(page.value || []));
+                next = page['@odata.nextLink'] || null;
+            }
+            return items;
+        }
+
+        async function loadGraphNotebooks() {
+            try {
+                graphState.notebooks = await graphGetAll('/v1.0/me/onenote/notebooks?$select=id,displayName&$orderby=displayName');
+            } catch (error) {
+                showToast(error.message);
+                graphState.notebooks = [];
+            }
+            renderGraphImport();
+        }
+
+        async function importSelectedGraphNotebook() {
+            const id = document.getElementById('graphNotebookSelect')?.value;
+            const meta = graphState.notebooks.find(n => n.id === id);
+            if (!id || !meta) return;
+
+            graphState.busy = true;
+            renderGraphImport();
+            try {
+                const sections = await graphGetAll(`/v1.0/me/onenote/notebooks/${encodeURIComponent(id)}/sections?$select=id,displayName`);
+                const graphNotebook = { id, displayName: meta.displayName, sections: [] };
+                for (const section of sections) {
+                    const pages = await graphGetAll(
+                        `/v1.0/me/onenote/sections/${encodeURIComponent(section.id)}/pages`
+                        + `?$select=id,title,level,order,createdDateTime,lastModifiedDateTime&$top=100&$orderby=order`
+                    );
+                    const withContent = [];
+                    for (const page of pages) {
+                        page.content = await graphGet(
+                            `/v1.0/me/onenote/pages/${encodeURIComponent(page.id)}/content?includeIDs=true`,
+                            { accept: 'text/html' }
+                        );
+                        withContent.push(page);
+                    }
+                    graphNotebook.sections.push({ id: section.id, displayName: section.displayName, pages: withContent });
+                }
+
+                const nb = await notebookFromGraph(graphNotebook);
+                state.notebooks.push(nb);
+                state.activeNotebookId = nb.id;
+                state.activeSectionId = nb.sections[0]?.id || null;
+                state.activePageId = nb.sections[0]?.pages[0]?.id || null;
+                saveStateToStorage();
+                closeImportModal();
+                renderApp();
+                showToast(`Imported "${nb.name}" from OneNote.`);
+            } catch (error) {
+                console.error('Graph import failed', error);
+                showToast(error.message || 'Import from OneNote failed.');
+            } finally {
+                graphState.busy = false;
+                renderGraphImport();
+            }
         }
 
         async function handleFileImport(event) {
