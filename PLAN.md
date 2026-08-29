@@ -97,10 +97,10 @@ pipeline and data model.
 | Task | REVIEW ref | Status | Code touchpoints |
 | --- | --- | --- | --- |
 | Server-side OAuth (auth-code + PKCE) and a `/api/graph/*` Graph proxy, config-gated by `GRAPH_CLIENT_ID`, keeping the client secret off the browser | §1 | done (#37) | `graph.js` — `/config`, `/login`, `/callback`, `/logout`, `/v1.0/*` proxy; in-memory session keyed by `onenote_gsid` cookie; token refresh on expiry |
-| Browser sign-in UI — a "Connect OneNote" control near Import that drives `/api/graph/login` and reflects `/api/graph/config` | §1 | todo | `index.html` |
-| Import: walk `GET /me/onenote/notebooks` → sections → pages via the proxy; `content?includeIDs=true` through `notebookFromGraph()` | §1 | todo | reuse Phase 3 adapter |
+| Browser sign-in UI — a "Connect OneNote" control near Import that drives `/api/graph/login` and reflects `/api/graph/config` | §1 | done (#38) | Import modal `#graphImportSection`; `refreshGraphStatus()` / `renderGraphImport()` / `connectGraph()` / `disconnectGraph()` |
+| Import: walk `GET /me/onenote/notebooks` → sections → pages via the proxy; `content?includeIDs=true` through `notebookFromGraph()` | §1 | done (#38) | `importSelectedGraphNotebook()` — notebook picker, section/page walk, per-page content fetch |
+| Handle Graph throttling (429 / `Retry-After`), pagination (`@odata.nextLink`) | §1, §9 | done (#38) | `graphGet()` (429 back-off) / `graphGetAll()` (follows `@odata.nextLink`) |
 | Push: `POST /me/onenote/sections/{id}/pages` (`text/html`) using `pageToGraphContent()` | §1, §3 | todo | reuse Phase 3 adapter |
-| Handle Graph throttling (429 / `Retry-After`), pagination (`@odata.nextLink`) | §1, §9 | todo | proxy layer |
 
 **Done when:** a signed-in user can import a real Microsoft 365 notebook and push
 a page back that appears correctly in OneNote.

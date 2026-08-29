@@ -120,8 +120,12 @@ The server exposes `/api/graph/config`, `/api/graph/login` (→ Microsoft
 sign-in), `/api/graph/callback`, `/api/graph/logout`, and a
 `/api/graph/v1.0/*` passthrough to `https://graph.microsoft.com/v1.0/*` that
 attaches the user's bearer token (refreshed on expiry). Tokens live only in the
-server's memory, keyed by the `onenote_gsid` session cookie. The in-app UI for
-sign-in and Graph import/export is a later slice.
+server's memory, keyed by the `onenote_gsid` session cookie.
+
+Once enabled, the **Import OneNote** dialog shows a **Microsoft OneNote (live)**
+panel: connect, pick a notebook, and **Import selected notebook** pulls its
+sections and pages (following `@odata.nextLink` pagination and backing off on
+`429`) straight into the app. Pushing changes back to OneNote is a later slice.
 
 ## Deploy with Docker
 
