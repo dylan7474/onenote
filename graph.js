@@ -274,7 +274,8 @@ async function handle(req, res, url) {
         }
         let body;
         try {
-            body = ['POST', 'PATCH', 'PUT'].includes(req.method) ? await readBody(req) : undefined;
+            // Page HTML can carry inlined image/attachment data URLs.
+            body = ['POST', 'PATCH', 'PUT'].includes(req.method) ? await readBody(req, 25 * 1024 * 1024) : undefined;
         } catch {
             send(res, 413, { error: 'Request body too large' });
             return true;

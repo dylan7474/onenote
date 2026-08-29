@@ -125,7 +125,9 @@ server's memory, keyed by the `onenote_gsid` session cookie.
 Once enabled, the **Import OneNote** dialog shows a **Microsoft OneNote (live)**
 panel: connect, pick a notebook, and **Import selected notebook** pulls its
 sections and pages (following `@odata.nextLink` pagination and backing off on
-`429`) straight into the app. Pushing changes back to OneNote is a later slice.
+`429`) straight into the app. The same panel can **send the open page to a
+OneNote section** — it POSTs the page's OneNote-compatible HTML and opens the
+new page in OneNote on the web.
 
 ## Deploy with Docker
 
@@ -186,7 +188,7 @@ implementation exists; **Missing** = no implementation yet.
 | Search | **Partial** | The “global” search currently filters only titles/tags in the active section. Add indexed full-text and OCR search across all notebooks, result snippets, scopes, filters, recent searches, and tag search. |
 | Ink and Draw | **Partial** | One bitmap pen layer exists. Add stroke/vector storage, eraser/lasso, selection/transform, highlighters, pressure/touch support, shapes, ruler, ink replay, and ink-to-shape/text/math. |
 | Insert content | **Partial** | File attachments can be added at the caret, persisted, and downloaded/launched; OneNote HTML attachment objects retain their body position on import. Add inline images, attachment printouts/previews, camera/scans, links, audio/video recordings, online video, date/time, equations/symbols, stickers, and reusable page templates. |
-| Capture and integrations | **Partial** | A Graph⇄internal adapter exists (`pageFromGraph` / `notebookFromGraph` / `*ToGraph`), but nothing calls Microsoft Graph yet. Add sign-in and the actual API calls, plus a web clipper/share target, email-to-note workflow, meeting details, and Outlook tasks. |
+| Capture and integrations | **Partial** | With `GRAPH_CLIENT_ID` set, sign in from the Import dialog to pull a Microsoft 365 / personal notebook and push individual pages back via the Graph OneNote API. Still missing: a web clipper/share target, email-to-note workflow, meeting details, and Outlook tasks. |
 | Collaboration and sync | **Missing** | State is one server-wide JSON document. Add accounts, private notebooks, invitations/links, permissions, real-time coauthoring, presence, comments/@mentions, conflict handling, offline cache, and multi-device sync. |
 | History and recovery | **Missing** | The History menu is informational only. Add undo/redo across editing, autosaved revisions, page versions/diff/restore, author attribution, recent edits, deleted-notes recycle bin, and backup/restore. |
 | Import/export/print | **Partial** | Project JSON and HTML-based imports exist; “OneNote ZIP” means ZIP files containing HTML, not native OneNote packages. Add sanitized, asset-aware import; PDF/HTML/Markdown export; print/preview; and document native `.one`/`.onepkg` limitations clearly. |

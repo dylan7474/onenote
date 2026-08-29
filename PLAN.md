@@ -100,10 +100,10 @@ pipeline and data model.
 | Browser sign-in UI — a "Connect OneNote" control near Import that drives `/api/graph/login` and reflects `/api/graph/config` | §1 | done (#38) | Import modal `#graphImportSection`; `refreshGraphStatus()` / `renderGraphImport()` / `connectGraph()` / `disconnectGraph()` |
 | Import: walk `GET /me/onenote/notebooks` → sections → pages via the proxy; `content?includeIDs=true` through `notebookFromGraph()` | §1 | done (#38) | `importSelectedGraphNotebook()` — notebook picker, section/page walk, per-page content fetch |
 | Handle Graph throttling (429 / `Retry-After`), pagination (`@odata.nextLink`) | §1, §9 | done (#38) | `graphGet()` (429 back-off) / `graphGetAll()` (follows `@odata.nextLink`) |
-| Push: `POST /me/onenote/sections/{id}/pages` (`text/html`) using `pageToGraphContent()` | §1, §3 | todo | reuse Phase 3 adapter |
+| Push: `POST /me/onenote/sections/{id}/pages` (`text/html`) using `pageToGraphContent()` | §1, §3 | done (#39) | `pushActivePageToGraph()` — section picker in the Graph panel, `graphSend()` POST, opens the created page's `oneNoteWebUrl`; proxy body limit raised to 25 MiB |
 
 **Done when:** a signed-in user can import a real Microsoft 365 notebook and push
-a page back that appears correctly in OneNote.
+a page back that appears correctly in OneNote. — **met** (#37–#39).
 
 ---
 

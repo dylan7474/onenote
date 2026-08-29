@@ -27,12 +27,12 @@ There is currently no connection to Microsoft 365, and the README frames
 This does more for OneNote compatibility than everything below combined. The
 rest is about not losing data on the file-based path in the meantime.
 
-_Status: Phase 4 in progress. Done: the server-side OAuth + proxy (#37,
-`graph.js`), and the in-app **connect + import** flow (#38) — the Import dialog's
-"Microsoft OneNote (live)" panel signs in, lists notebooks, and walks
-sections/pages/content through the proxy (pagination + 429 back-off) into
-`notebookFromGraph()`. Still to do: **push** — `POST .../pages` from
-`pageToGraphContent()`._
+_Status: Phase 4 complete (#37–#39). Server-side OAuth + `/api/graph/*` proxy
+(`graph.js`); the Import dialog's "Microsoft OneNote (live)" panel signs in,
+imports a chosen notebook (pagination + 429 back-off, via `notebookFromGraph()`),
+and sends the open page to a chosen section (`pushActivePageToGraph()` →
+`POST .../pages` with `pageToGraphContent()`). All config-gated by
+`GRAPH_CLIENT_ID`._
 
 ## 2. HTML import silently drops the most common content
 
