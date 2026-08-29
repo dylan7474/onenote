@@ -87,10 +87,13 @@ a `data-level` attribute)._
 
 ## 4. Align the data model with Graph's schema
 
-_Schema versioning done in Phase 3 (#34) — `SCHEMA_VERSION` (client + server),
-`migrateState()` on every load, and a `writeState` 409 when a state is stamped
-newer than the server. The `name`↔`displayName` / page-level `content` adapter
-is the remaining Phase 3 slice._
+_Done in Phase 3 (#34–#35). Schema versioning: `SCHEMA_VERSION` (client +
+server), `migrateState()` on every load, a `writeState` 409 when a state is
+stamped newer than the server. Adapter: `notebookToGraph()` / `sectionToGraph()`
+/ `pageToGraphContent()` and `pageFromGraph()` / `notebookFromGraph()` —
+`name`↔`displayName`, `title` unchanged, `block[]`↔page-level `content` HTML,
+`level` from Graph's page `level`. Pure functions; Phase 4 wires them to Graph
+calls._
 
 Small renames now avoid a painful adapter later:
 
@@ -99,10 +102,9 @@ Small renames now avoid a painful adapter later:
 | `notebook.name`, `section.name` (`index.html:855`) | `displayName` |
 | `page.title` | `title` |
 | `block.content` | page-level `content` (single HTML doc) |
-| `page.level` 0–2 (`index.html:2031`) | no subpage nesting via API; subpages are `<h1>`/indent level in content |
+| `page.level` 0–2 (`index.html:2031`) | Graph page `level` (read-only, 0-based) — the adapter clamps to 0–2 |
 
-The last row matters: the 3-level `level` model maps to nothing Graph exposes,
-and OneNote's own ZIP export represents subpages by **filename** (`Page.html`,
+OneNote's own ZIP export represents subpages by **filename** (`Page.html`,
 `Page 1.html`, `Page 2.html` for a subpage group), **not nested folders**.
 
 _ZIP subpage detection: done in Phase 1 (#30) — `subpageInfo()` recognises the
