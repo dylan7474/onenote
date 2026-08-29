@@ -2205,6 +2205,46 @@
             };
         }
 
+        // OneNote / Microsoft Graph mark tagged content with a `data-tag`
+        // attribute (comma-separated, an optional `:status` suffix). "to-do"
+        // maps onto this app's checkbox; the rest surface as page tag chips.
+        const DATA_TAG_LABELS = {
+            important: 'Important', critical: 'Critical', question: 'Question',
+            idea: 'Idea', 'remember-for-later': 'Idea',
+            definition: 'Definition', highlight: 'Highlight', password: 'Password',
+            contact: 'Contact', 'phone-number': 'Contact', address: 'Contact'
+        };
+
+        function dataTagLabel(base) {
+            if (!base) return null;
+            if (base in DATA_TAG_LABELS) return DATA_TAG_LABELS[base];
+            return base.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        }
+
+        // Convert `data-tag="to-do"` elements into checkboxes (in place, keeping
+        // the original attribute for a lossless round-trip) and collect the
+        // remaining tag labels into `tagSink`.
+        function applyDataTags(doc, tagSink) {
+            for (const el of Array.from(doc.querySelectorAll('[data-tag]'))) {
+                const tokens = (el.getAttribute('data-tag') || '').split(',').map(t => t.trim()).filter(Boolean);
+                for (const token of tokens) {
+                    const base = token.replace(/:.*/, '').toLowerCase();
+                    if (base === 'to-do') {
+                        if (!el.querySelector('input[type="checkbox"]')) {
+                            const box = doc.createElement('input');
+                            box.type = 'checkbox';
+                            if (/:\s*completed/i.test(token)) box.setAttribute('checked', 'checked');
+                            el.insertBefore(doc.createTextNode(' '), el.firstChild);
+                            el.insertBefore(box, el.firstChild);
+                        }
+                        continue;
+                    }
+                    const label = dataTagLabel(base);
+                    if (label) tagSink.add(label);
+                }
+            }
+        }
+
         function parseJsonImport(file) {
             return new Promise((resolve) => {
                 const reader = new FileReader();
@@ -2244,6 +2284,8 @@
                     const pageTitle = doc.title || doc.querySelector('h1')?.innerText || file.name.replace(/\.[^/.]+$/, "");
                     const attachments = await extractOneNoteAttachments(doc);
                     const { createdAt, updatedAt } = readDocDates(doc);
+                    const tags = new Set(['Imported OneNote']);
+                    applyDataTags(doc, tags);
 
                     const sec = getActiveSection();
                     if (sec) {
@@ -2252,7 +2294,7 @@
                             title: pageTitle,
                             createdAt,
                             updatedAt,
-                            tags: ['Imported OneNote'],
+                            tags: [...tags],
                             attachments,
                             blocks: blocksFromImportedDoc(doc, htmlText)
                         });
@@ -2295,6 +2337,9 @@
                         };
                     });
 
+                    const tags = new Set(['OneNote Archive']);
+                    applyDataTags(doc, tags);
+
                     importedPages.push({
                         id: 'page_' + Date.now() + Math.random().toString(36).substr(2, 4),
                         title: pageTitle,
@@ -2303,7 +2348,7 @@
                         // while respecting OneNote's two subpage levels.
                         level: Math.min(2, Math.max(0, filename.split('/').filter(Boolean).length - 1 - commonDepth)),
                         ...readDocDates(doc),
-                        tags: ['OneNote Archive'],
+                        tags: [...tags],
                         attachments,
                         blocks: blocksFromImportedDoc(doc, htmlContent)
                     });

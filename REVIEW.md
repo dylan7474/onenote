@@ -105,9 +105,12 @@ which also line up with the three page tags (Important / Question / Idea,
 `index.html:331`).
 
 - Import: map `data-tag` on paragraphs to the checkbox UI and tag chips.
-- Export: emit `data-tag` instead of `<input>`.
-- Bonus: removes the inline `onclick` handlers, which are an XSS vector and
-  won't survive sanitization.
+  _Status: done in Phase 1 (#28) — `applyDataTags()` turns `data-tag="to-do"`
+  into a checkbox (keeping the attribute for round-tripping) and maps the other
+  values to page chips (known set to friendly labels, unknown ones
+  title-cased)._
+- Export: emit `data-tag` instead of `<input>`. _Still pending — Phase 2._
+- Bonus: the inline `onclick` handlers are already gone (Phase 0 #23).
 
 ## 6. Sanitize before ingesting real OneNote HTML
 
