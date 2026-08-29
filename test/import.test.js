@@ -116,6 +116,24 @@ test('HTML import: embedded <object data-attachment> becomes a stored attachment
     assert.equal(page.attachments[0].name, 'agenda.pdf');
     assert.equal(page.attachments[0].type, 'application/pdf');
     assert.ok(page.attachments[0].data, 'base64 payload stored');
+    // size is the real decoded byte length, not base64 length * 3/4 (REVIEW §9)
+    assert.equal(page.attachments[0].size, window.atob(page.attachments[0].data).length);
+});
+
+test('HTML import: an unresolvable remote <object> (Graph resource) is flagged, not stored (REVIEW §9)', async (t) => {
+    const { window, dispose } = createApp();
+    t.after(dispose);
+    seedNotebook(window);
+
+    await window.parseHtmlImport(fixtureFile(window, 'onenote-graph-object.html', 'text/html', 'onenote-graph-object.html'));
+    const page = getState(window).notebooks[0].sections[0].pages[0];
+
+    assert.equal(page.attachments.length, 0, 'nothing to store without an authenticated fetch');
+    const html = page.blocks[0].content;
+    assert.match(html, /class="inline-attachment attachment-unresolved"/);
+    assert.match(html, /data-attachment-source="https:\/\/graph\.microsoft\.com\//);
+    assert.match(html, /report\.docx \(unavailable\)/);
+    assert.doesNotMatch(html, /data-attachment-id=/, 'no dangling attachment id');
 });
 
 test('HTML import: reads <meta name="created"> / "lastModified" (REVIEW §2)', async (t) => {
@@ -214,7 +232,7 @@ test('ZIP import: section from filename, pages sorted, folder depth -> level', a
     );
 });
 
-test('ZIP import: <img> whose bytes live in a *_files/ folder is inlined as a data URL (REVIEW §2)', async (t) => {
+test('ZIP import: an <img> is inlined by basename fallback; a missing one is left alone (REVIEW §2/§9)', async (t) => {
     const { window, dispose } = createApp();
     t.after(dispose);
     seedNotebook(window);
@@ -222,8 +240,10 @@ test('ZIP import: <img> whose bytes live in a *_files/ folder is inlined as a da
     await importZipFixture(window, 'My Section.zip', 'zip-src');
     const html = getState(window).notebooks[0].sections.at(-1).pages[0].blocks[0].content;
 
+    // src="assets/diagram.png" is not a real path in the zip; it resolves via
+    // the unique "diagram.png" basename in "Page One_files/".
     assert.match(html, /<img[^>]+src="data:image\/png;base64,[A-Za-z0-9+/=]+"/, 'resolved image embedded');
-    assert.doesNotMatch(html, /src="Page One_files\/diagram\.png"/, 'original relative src replaced');
+    assert.doesNotMatch(html, /src="assets\/diagram\.png"/, 'original src replaced');
     // A referenced file that is not in the ZIP is left untouched, not dropped.
     assert.match(html, /<img[^>]+src="Page One_files\/missing\.png"/);
 });

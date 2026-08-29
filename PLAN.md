@@ -42,8 +42,8 @@ for this.
 | Import `<p data-tag="to-do｜important｜question｜…">` → checkbox UI + tag chips | §5 | done (#28) | `applyDataTags()` — `to-do`/`to-do:completed` → checkbox (attribute kept for round-trip); other values → page chips (known set → friendly labels, unknown → title-cased); comma lists supported |
 | Split whole-section HTML export (one doc, `<h1>`-delimited) into multiple pages | §2 | todo | `parseHtmlImport` |
 | Rework ZIP subpage-level detection — flat `Notebook/Section/Page.html`, subpages by filename — replace the folder-depth heuristic | §4 | todo | `parseZipImport` |
-| Fix importer bugs: `decodeDataUrl` malformed-escape crash (**done #25**); ZIP asset basename fallback across `*_files/`; base64 size math padding | §9 | partial (#25) | `decodeDataUrl` done; `resolveFile` basename fallback + size math todo |
-| Detect Graph-host `<object data>` URLs and surface "requires sign-in" instead of an empty chip | §9 | todo | `extractOneNoteAttachments` |
+| Fix importer bugs: `decodeDataUrl` malformed-escape crash (#25); ZIP asset basename fallback across `*_files/`; base64 size math padding | §9 | done (#25, #29) | `resolveFile` now falls back to a unique same-basename zip entry; `base64ByteLength()` accounts for `=` padding |
+| Detect Graph-host `<object data>` URLs and surface "requires sign-in" instead of an empty chip | §9 | done (#29) | remote `<object data>` → `span.inline-attachment.attachment-unresolved` with `data-attachment-source` and a "(unavailable)" label, no dangling id |
 
 **Done when:** a real OneNote HTML page and ZIP export import with images intact,
 correct timestamps, checkboxes/tags mapped, and layout approximating the

@@ -115,6 +115,7 @@
         .inline-attachment:hover { background: #ede9fe; border-color: #8b5cf6; }
         .dark .inline-attachment { background: rgba(88, 28, 135, 0.35); border-color: #7e22ce; color: #e9d5ff; }
         .inline-attachment::before { content: '\1F4CE'; font-size: 0.8em; }
+        .inline-attachment.attachment-unresolved { opacity: 0.65; font-style: italic; cursor: help; }
         #pageWorkspace.attachment-dragover::after {
             content: 'Drop files to attach them to this page';
             position: absolute; inset: 1rem; z-index: 40; display: grid; place-items: center;
@@ -2071,6 +2072,14 @@
             return { type, data: btoa(unescape(encodeURIComponent(text))) };
         }
 
+        // Decoded byte length of base64 text, accounting for '=' padding.
+        function base64ByteLength(b64) {
+            const s = String(b64 || '');
+            if (!s) return 0;
+            const pad = s.endsWith('==') ? 2 : s.endsWith('=') ? 1 : 0;
+            return Math.max(0, Math.floor(s.length * 3 / 4) - pad);
+        }
+
         // Best-effort MIME type from a file name/extension, for bytes pulled out
         // of a ZIP where the container gives us no type of its own.
         function guessMimeFromName(name) {
@@ -2088,19 +2097,34 @@
             for (const node of nodes) {
                 const name = node.getAttribute('data-attachment') || node.getAttribute('name') || 'Attachment';
                 const source = node.getAttribute('data') || node.getAttribute('src') || '';
+                const remote = /^https?:/i.test(source);
                 let payload = decodeDataUrl(source);
-                if (!payload && resolveFile) payload = await resolveFile(source);
-                const id = `att_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-                if (payload?.data) {
-                    const size = Math.floor(payload.data.length * 3 / 4);
-                    attachments.push({ id, name, type: node.getAttribute('type') || payload.type, size, createdAt: new Date().toISOString(), data: payload.data });
-                }
+                if (!payload && resolveFile && !remote) payload = await resolveFile(source);
+
                 const link = doc.createElement('span');
                 link.className = 'inline-attachment';
                 link.contentEditable = 'false';
-                link.dataset.attachmentId = id;
                 link.dataset.attachment = name;
                 link.textContent = name;
+
+                if (payload?.data) {
+                    const id = `att_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+                    attachments.push({
+                        id, name,
+                        type: node.getAttribute('type') || payload.type,
+                        size: base64ByteLength(payload.data),
+                        createdAt: new Date().toISOString(),
+                        data: payload.data
+                    });
+                    link.dataset.attachmentId = id;
+                } else if (remote) {
+                    // Microsoft Graph resource URLs (and other remote refs) need
+                    // an authenticated fetch we can't do at import time.
+                    link.classList.add('attachment-unresolved');
+                    link.dataset.attachmentSource = source;
+                    link.title = `${name} — sign in to load this attachment`;
+                    link.textContent = `${name} (unavailable)`;
+                }
                 node.replaceWith(link);
             }
 
@@ -2319,6 +2343,16 @@
                 let commonDepth = 0;
                 while (directoryParts.length && directoryParts.every(parts => parts[commonDepth] && parts[commonDepth] === directoryParts[0][commonDepth])) commonDepth++;
 
+                // basename -> [full paths], for resolving asset references whose
+                // path OneNote rewrote (e.g. a "<page>_files/" folder).
+                const filesByBasename = new Map();
+                for (const key of Object.keys(zip.files)) {
+                    if (zip.files[key].dir) continue;
+                    const base = key.split('/').pop().toLowerCase();
+                    if (!filesByBasename.has(base)) filesByBasename.set(base, []);
+                    filesByBasename.get(base).push(key);
+                }
+
                 for (const filename of htmlFilenames) {
                     const htmlContent = await zip.files[filename].async('string');
                     const parser = new DOMParser();
@@ -2329,7 +2363,12 @@
                         const raw = source.split(/[?#]/, 1)[0].replace(/^\.\//, '');
                         let cleanSource = raw;
                         try { cleanSource = decodeURIComponent(raw); } catch (error) { /* keep raw */ }
-                        const entry = zip.file(directory + cleanSource) || zip.file(cleanSource);
+                        let entry = zip.file(directory + cleanSource) || zip.file(cleanSource);
+                        if (!entry) {
+                            // Fall back to a unique file with the same basename.
+                            const candidates = filesByBasename.get(cleanSource.split('/').pop().toLowerCase());
+                            if (candidates && candidates.length === 1) entry = zip.file(candidates[0]);
+                        }
                         if (!entry) return null;
                         return {
                             type: guessMimeFromName(cleanSource) || 'application/octet-stream',
