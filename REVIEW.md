@@ -27,6 +27,13 @@ There is currently no connection to Microsoft 365, and the README frames
 This does more for OneNote compatibility than everything below combined. The
 rest is about not losing data on the file-based path in the meantime.
 
+_Status: Phase 4 in progress. The server-side half is done (#37) — `graph.js`:
+OAuth auth-code + PKCE, a `/api/graph/*` proxy to `graph.microsoft.com/v1.0/*`
+with server-held tokens, config-gated by `GRAPH_CLIENT_ID`. The Phase 3 adapter
+(`notebookFromGraph()` / `pageToGraphContent()`) already covers the shape
+conversion. Still to do: the in-app "Connect OneNote" UI, and the
+import-tree / push-page flows wired to the proxy._
+
 ## 2. HTML import silently drops the most common content
 
 `parseHtmlImport` (`index.html:2105`) and `parseZipImport` (`index.html:2144`)

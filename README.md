@@ -92,6 +92,37 @@ file reproduces the page(s), subpage nesting included. (Page-level tag chips
 other than the `to-do` checkbox are not carried — OneNote's content HTML has no
 page-tag slot.)
 
+## Connect to Microsoft OneNote (optional)
+
+The server can talk to the **Microsoft Graph OneNote API** on behalf of a
+signed-in user. It is **off unless `GRAPH_CLIENT_ID` is set** — a default deploy
+is unaffected and needs no Microsoft account.
+
+To enable it you need a free [Entra ID app
+registration](https://learn.microsoft.com/graph/auth-register-app-v2) (no paid
+Microsoft 365 subscription — a personal Microsoft account works):
+
+- **Redirect URI:** `http://localhost:3020/api/graph/callback` (match your host/port)
+- **Delegated permissions:** `Notes.ReadWrite`, `Notes.Create`, `User.Read`, `offline_access`
+- Supported account types: personal + work/school
+
+Then run the server with:
+
+```bash
+GRAPH_CLIENT_ID=<app-client-id> \
+GRAPH_CLIENT_SECRET=<secret>            # optional; PKCE is used if omitted \
+GRAPH_TENANT=common                     # or consumers | organizations | <tenant-id> \
+GRAPH_REDIRECT_URI=http://localhost:3020/api/graph/callback \
+node server.js
+```
+
+The server exposes `/api/graph/config`, `/api/graph/login` (→ Microsoft
+sign-in), `/api/graph/callback`, `/api/graph/logout`, and a
+`/api/graph/v1.0/*` passthrough to `https://graph.microsoft.com/v1.0/*` that
+attaches the user's bearer token (refreshed on expiry). Tokens live only in the
+server's memory, keyed by the `onenote_gsid` session cookie. The in-app UI for
+sign-in and Graph import/export is a later slice.
+
 ## Deploy with Docker
 
 ```bash
