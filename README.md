@@ -131,8 +131,10 @@ specific legacy desktop release.
 - JSON notebook export and per-page OneNote-compatible HTML export; JSON,
   HTML/HTM, and ZIP-of-HTML import, preserving supported OneNote subpage levels,
   outline geometry, `<meta>` timestamps, `data-tag` markup, and inlined images.
-- Debounced server-side JSON persistence, including a one-time migration from
-  the older browser-local state.
+- Debounced server-side JSON persistence with a versioned state schema:
+  `migrateState()` upgrades older saved data on load, and the server refuses to
+  overwrite the data file with a state stamped newer than it understands. Also a
+  one-time migration from the older browser-local state.
 
 ### Comparison with Microsoft OneNote
 

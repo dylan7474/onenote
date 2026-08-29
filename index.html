@@ -473,8 +473,13 @@
     <div id="toastContainer" class="fixed bottom-4 right-4 z-50 space-y-2 pointer-events-none"></div>
 
     <script>
+        // Current persisted-state schema version. Keep in sync with
+        // SCHEMA_VERSION in server.js.
+        const SCHEMA_VERSION = 1;
+
         // Default State Initialization
         let state = {
+            schemaVersion: SCHEMA_VERSION,
             notebooks: [],
             activeNotebookId: null,
             activeSectionId: null,
@@ -724,11 +729,42 @@
             }
         }
 
+        // Bring a loaded state up to SCHEMA_VERSION in place. Migrations run in
+        // order; each block ends by setting `version` to the level it produced.
+        function migrateState(loaded) {
+            const next = (loaded && typeof loaded === 'object') ? loaded : {};
+            let version = Number(next.schemaVersion) || 0;
+
+            if (version < 1) {
+                next.notebooks = Array.isArray(next.notebooks) ? next.notebooks : [];
+                next.notebooks.forEach(nb => {
+                    nb.sections = Array.isArray(nb.sections) ? nb.sections : [];
+                    nb.sections.forEach(sec => {
+                        if (sec.color) sec.color = snapSectionColor(sec.color);
+                        sec.pages = Array.isArray(sec.pages) ? sec.pages : [];
+                        sec.pages.forEach(page => {
+                            page.blocks = Array.isArray(page.blocks) ? page.blocks : [];
+                            page.tags = Array.isArray(page.tags) ? page.tags : [];
+                            if (page.level != null) {
+                                page.level = Math.min(2, Math.max(0, Math.trunc(Number(page.level)) || 0));
+                            }
+                        });
+                    });
+                });
+                version = 1;
+            }
+
+            // Future: if (version < 2) { ...; version = 2; }
+
+            next.schemaVersion = SCHEMA_VERSION;
+            return next;
+        }
+
         async function loadStateFromServer() {
             try {
                 const response = await fetch(STATE_API_URL, { cache: 'no-store' });
                 if (response.ok) {
-                    state = await response.json();
+                    state = migrateState(await response.json());
                     return;
                 }
                 if (response.status !== 404) {
@@ -738,7 +774,7 @@
                 // Migrate data created by older versions of the application once.
                 const legacyState = localStorage.getItem('onenote_web_state');
                 if (legacyState) {
-                    state = JSON.parse(legacyState);
+                    state = migrateState(JSON.parse(legacyState));
                     await persistState();
                     localStorage.removeItem('onenote_web_state');
                 }

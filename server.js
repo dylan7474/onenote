@@ -8,6 +8,12 @@ const indexFile = path.join(__dirname, 'index.html');
 const vendorDir = path.join(__dirname, 'vendor');
 const maxBodyBytes = 50 * 1024 * 1024;
 
+// Highest client state-schema version this build understands. Keep in sync with
+// SCHEMA_VERSION in index.html. The client owns migrations; the server only
+// refuses to persist a state stamped newer than it knows, so a rolled-back
+// deploy can't overwrite the data file with a format it might not preserve.
+const SCHEMA_VERSION = 1;
+
 const vendorContentTypes = {
     '.js': 'application/javascript; charset=utf-8',
     '.css': 'text/css; charset=utf-8',
@@ -55,6 +61,15 @@ function writeState(req, res) {
             const value = JSON.parse(Buffer.concat(chunks).toString('utf8'));
             if (!value || !Array.isArray(value.notebooks)) {
                 return sendJson(res, 400, { error: 'Invalid application state' });
+            }
+            if (value.schemaVersion != null) {
+                const version = Number(value.schemaVersion);
+                if (!Number.isInteger(version) || version < 0) {
+                    return sendJson(res, 400, { error: 'Invalid schemaVersion' });
+                }
+                if (version > SCHEMA_VERSION) {
+                    return sendJson(res, 409, { error: 'State schema is newer than this server' });
+                }
             }
 
             await fs.promises.mkdir(path.dirname(dataFile), { recursive: true });
@@ -109,7 +124,11 @@ const server = http.createServer((req, res) => {
     sendJson(res, 404, { error: 'Not found' });
 });
 
-server.listen(port, () => {
-    console.log(`OneNote Web listening on http://localhost:${port}`);
-    console.log(`Saving application state to ${dataFile}`);
-});
+if (require.main === module) {
+    server.listen(port, () => {
+        console.log(`OneNote Web listening on http://localhost:${port}`);
+        console.log(`Saving application state to ${dataFile}`);
+    });
+}
+
+module.exports = { server, SCHEMA_VERSION };

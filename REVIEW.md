@@ -87,6 +87,11 @@ a `data-level` attribute)._
 
 ## 4. Align the data model with Graph's schema
 
+_Schema versioning done in Phase 3 (#34) — `SCHEMA_VERSION` (client + server),
+`migrateState()` on every load, and a `writeState` 409 when a state is stamped
+newer than the server. The `name`↔`displayName` / page-level `content` adapter
+is the remaining Phase 3 slice._
+
 Small renames now avoid a painful adapter later:
 
 | This project | Graph |
