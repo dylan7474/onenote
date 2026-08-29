@@ -191,7 +191,7 @@
 
     <!-- OneNote-style application menus -->
     <nav id="appMenuBar" class="h-10 shrink-0 bg-white dark:bg-slate-850 border-b border-slate-200 dark:border-slate-700 flex items-stretch px-3 select-none z-30" aria-label="OneNote menu tabs">
-        <div class="relative"><button class="app-menu-trigger h-full px-3 text-sm hover:bg-slate-100 dark:hover:bg-slate-800" onclick="toggleAppMenu('fileMenu', event)">File</button><div id="fileMenu" class="app-menu-panel hidden absolute top-full left-0 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-b-lg shadow-xl p-1.5 text-sm z-50"><button onclick="closeAppMenus(); promptCreateNotebook()" class="w-full flex gap-2 items-center px-3 py-2 rounded hover:bg-slate-100 dark:hover:bg-slate-700"><i data-lucide="book-plus" class="w-4 h-4"></i>New notebook</button><button onclick="closeAppMenus(); openImportModal()" class="w-full flex gap-2 items-center px-3 py-2 rounded hover:bg-slate-100 dark:hover:bg-slate-700"><i data-lucide="file-input" class="w-4 h-4"></i>Import</button><button onclick="closeAppMenus(); exportCurrentNotebook()" class="w-full flex gap-2 items-center px-3 py-2 rounded hover:bg-slate-100 dark:hover:bg-slate-700"><i data-lucide="download" class="w-4 h-4"></i>Export notebook</button></div></div>
+        <div class="relative"><button class="app-menu-trigger h-full px-3 text-sm hover:bg-slate-100 dark:hover:bg-slate-800" onclick="toggleAppMenu('fileMenu', event)">File</button><div id="fileMenu" class="app-menu-panel hidden absolute top-full left-0 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-b-lg shadow-xl p-1.5 text-sm z-50"><button onclick="closeAppMenus(); promptCreateNotebook()" class="w-full flex gap-2 items-center px-3 py-2 rounded hover:bg-slate-100 dark:hover:bg-slate-700"><i data-lucide="book-plus" class="w-4 h-4"></i>New notebook</button><button onclick="closeAppMenus(); openImportModal()" class="w-full flex gap-2 items-center px-3 py-2 rounded hover:bg-slate-100 dark:hover:bg-slate-700"><i data-lucide="file-input" class="w-4 h-4"></i>Import</button><button onclick="closeAppMenus(); exportCurrentNotebook()" class="w-full flex gap-2 items-center px-3 py-2 rounded hover:bg-slate-100 dark:hover:bg-slate-700"><i data-lucide="download" class="w-4 h-4"></i>Export notebook</button><button onclick="closeAppMenus(); exportActivePageHtml()" class="w-full flex gap-2 items-center px-3 py-2 rounded hover:bg-slate-100 dark:hover:bg-slate-700"><i data-lucide="file-code" class="w-4 h-4"></i>Export page as HTML</button></div></div>
         <button class="h-full px-3 text-sm font-medium border-b-2 border-onenote-600 text-onenote-700 dark:text-purple-300" onclick="closeAppMenus(); document.getElementById('editorRibbon').scrollIntoView()">Home</button>
         <div class="relative"><button class="app-menu-trigger h-full px-3 text-sm hover:bg-slate-100 dark:hover:bg-slate-800" onclick="toggleAppMenu('insertMenu', event)">Insert</button><div id="insertMenu" class="app-menu-panel hidden absolute top-full left-0 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-b-lg shadow-xl p-1.5 text-sm z-50"><button onclick="closeAppMenus(); addNewPage()" class="w-full flex gap-2 items-center px-3 py-2 rounded hover:bg-slate-100 dark:hover:bg-slate-700"><i data-lucide="file-plus" class="w-4 h-4"></i>New page</button><button onclick="closeAppMenus(); chooseAttachments()" class="w-full flex gap-2 items-center px-3 py-2 rounded hover:bg-slate-100 dark:hover:bg-slate-700"><i data-lucide="paperclip" class="w-4 h-4"></i>File attachment</button><button onclick="closeAppMenus(); insertCheckbox()" class="w-full flex gap-2 items-center px-3 py-2 rounded hover:bg-slate-100 dark:hover:bg-slate-700"><i data-lucide="list-checks" class="w-4 h-4"></i>To-do item</button></div></div>
         <button class="h-full px-3 text-sm hover:bg-slate-100 dark:hover:bg-slate-800" onclick="closeAppMenus(); toggleDrawMode()">Draw</button>
@@ -2550,6 +2550,92 @@
             downloadAnchor.remove();
 
             showToast('Notebook exported to JSON.');
+        }
+
+        // --- OneNote-compatible HTML export ---------------------------------
+        // Produces the "supported input HTML" shape the Microsoft Graph OneNote
+        // API accepts and that this app's own importer round-trips: a head with
+        // created/lastModified meta, and one absolutely-positioned <div> per
+        // note block. Checkboxes become <p data-tag="to-do">; inline attachment
+        // chips and page-level attachments become <object data-attachment>.
+
+        function attachmentObjectHtml(att) {
+            const type = att.type || 'application/octet-stream';
+            const data = att.data ? `data:${type};base64,${att.data}` : (att.source || '');
+            return `<object data-attachment="${escapeHtml(att.name || 'Attachment')}"`
+                + (data ? ` data="${escapeHtml(data)}"` : '')
+                + ` type="${escapeHtml(type)}"></object>`;
+        }
+
+        function blockContentToOneNoteHtml(html, page, usedAttachmentIds) {
+            const tpl = document.createElement('template');
+            tpl.innerHTML = sanitizeHtml(html || '');
+
+            tpl.content.querySelectorAll('input[type="checkbox"]').forEach(box => {
+                const host = box.closest('p, div, li') || box.parentElement;
+                if (host) host.setAttribute('data-tag', box.hasAttribute('checked') ? 'to-do:completed' : 'to-do');
+                box.remove();
+            });
+            tpl.content.querySelectorAll('[data-tag^="to-do"]').forEach(el => {
+                if (el.firstChild && el.firstChild.nodeType === 3) {
+                    el.firstChild.textContent = el.firstChild.textContent.replace(/^\s+/, '');
+                }
+            });
+
+            tpl.content.querySelectorAll('.inline-attachment').forEach(span => {
+                const id = span.dataset.attachmentId;
+                const att = id && (page.attachments || []).find(a => a.id === id);
+                const holder = document.createElement('div');
+                if (att) {
+                    usedAttachmentIds.add(id);
+                    holder.innerHTML = attachmentObjectHtml(att);
+                } else {
+                    holder.innerHTML = attachmentObjectHtml({
+                        name: span.dataset.attachment || span.textContent,
+                        source: span.dataset.attachmentSource || ''
+                    });
+                }
+                span.replaceWith(holder.firstChild);
+            });
+
+            return tpl.innerHTML;
+        }
+
+        function pageToOneNoteHtml(page) {
+            const used = new Set();
+            let flowTop = 48;
+            const blocks = (page.blocks || []).map(block => {
+                const inner = blockContentToOneNoteHtml(block.content, page, used);
+                const left = Number.isFinite(block.x) ? block.x : 48;
+                const top = block.y ? block.y : flowTop;
+                flowTop = top + 240;
+                const width = (Number.isFinite(block.width) && block.width) ? `;width:${block.width}px` : '';
+                return `  <div style="position:absolute;left:${left}px;top:${top}px${width}">\n    ${inner}\n  </div>`;
+            });
+
+            const orphans = (page.attachments || []).filter(a => !used.has(a.id));
+            if (orphans.length) {
+                blocks.push(`  <div style="position:absolute;left:48px;top:${flowTop}px">\n    `
+                    + orphans.map(attachmentObjectHtml).join('\n    ') + '\n  </div>');
+            }
+
+            const meta = (name, value) => value ? `  <meta name="${name}" content="${escapeHtml(value)}">\n` : '';
+            return '<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="utf-8">\n'
+                + meta('created', page.createdAt) + meta('lastModified', page.updatedAt)
+                + `  <title>${escapeHtml(page.title || 'Untitled Page')}</title>\n`
+                + '</head>\n<body>\n' + blocks.join('\n') + '\n</body>\n</html>\n';
+        }
+
+        function exportActivePageHtml() {
+            const page = getActivePage();
+            if (!page) return showToast('Select a page to export.');
+            const anchor = document.createElement('a');
+            anchor.href = 'data:text/html;charset=utf-8,' + encodeURIComponent(pageToOneNoteHtml(page));
+            anchor.download = `${(page.title || 'page').replace(/[^\w.-]+/g, '_')}.html`;
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            showToast('Page exported as OneNote-compatible HTML.');
         }
 
         // Global Search Bar Handler
