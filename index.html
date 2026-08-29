@@ -2099,7 +2099,7 @@
 
         // --- Microsoft Graph OneNote: connect + import ----------------------
 
-        const graphState = { enabled: false, connected: false, notebooks: [], busy: false };
+        const graphState = { enabled: false, connected: false, notebooks: [], sections: [], busy: false };
 
         async function refreshGraphStatus() {
             try {
@@ -2130,15 +2130,22 @@
             } else if (graphState.busy) {
                 body.innerHTML = `<p class="flex items-center gap-2"><i data-lucide="loader" class="w-4 h-4 animate-spin"></i>Importing from OneNote…</p>`;
             } else {
-                const options = graphState.notebooks.map(n => `<option value="${escapeHtml(n.id)}">${escapeHtml(n.displayName || 'Untitled notebook')}</option>`).join('');
+                const nbOptions = graphState.notebooks.map(n => `<option value="${escapeHtml(n.id)}">${escapeHtml(n.displayName || 'Untitled notebook')}</option>`).join('');
+                const secOptions = graphState.sections.map(s => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.displayName || 'Section')}</option>`).join('');
+                const activeTitle = getActivePage()?.title || 'the open page';
                 body.innerHTML = `<p class="text-green-600 dark:text-green-400 flex items-center gap-1"><i data-lucide="check-circle" class="w-4 h-4"></i>Connected.</p>
                     <div class="flex items-center gap-2">
-                        <select id="graphNotebookSelect" class="flex-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 text-xs">${options || '<option value="">No notebooks</option>'}</select>
+                        <select id="graphNotebookSelect" onchange="loadGraphSections()" class="flex-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 text-xs">${nbOptions || '<option value="">No notebooks</option>'}</select>
                         <button onclick="loadGraphNotebooks()" class="px-2 py-1 text-xs rounded bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600" title="Refresh list"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i></button>
                     </div>
                     <div class="flex items-center gap-2">
                         <button onclick="importSelectedGraphNotebook()" ${graphState.notebooks.length ? '' : 'disabled'} class="px-3 py-1.5 bg-onenote-600 hover:bg-onenote-700 disabled:opacity-40 text-white text-xs font-semibold rounded-lg transition">Import selected notebook</button>
                         <button onclick="disconnectGraph()" class="px-3 py-1.5 text-xs rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600">Disconnect</button>
+                    </div>
+                    <div class="border-t border-slate-200 dark:border-slate-700 pt-3 space-y-2">
+                        <p class="text-[11px] uppercase tracking-wider font-semibold text-slate-400">Send the open page to OneNote</p>
+                        <select id="graphSectionSelect" class="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 text-xs">${secOptions || '<option value="">No sections</option>'}</select>
+                        <button id="graphPushBtn" onclick="pushActivePageToGraph()" ${(graphState.sections.length && getActivePage()) ? '' : 'disabled'} class="px-3 py-1.5 bg-onenote-600 hover:bg-onenote-700 disabled:opacity-40 text-white text-xs font-semibold rounded-lg transition">Send “${escapeHtml(activeTitle)}” to OneNote</button>
                     </div>`;
             }
             lucide.createIcons();
@@ -2155,13 +2162,15 @@
             renderGraphImport();
         }
 
-        // Proxied Graph GET with 429 back-off. Absolute graph.microsoft.com URLs
-        // (e.g. @odata.nextLink) are rewritten to go through the proxy.
-        async function graphGet(pathOrUrl, { accept = 'application/json', tries = 3 } = {}) {
+        // Proxied Graph request with 429 back-off. Absolute graph.microsoft.com
+        // URLs (e.g. @odata.nextLink) are rewritten to go through the proxy.
+        async function graphRequest(pathOrUrl, { method = 'GET', accept = 'application/json', body, contentType, tries = 3 } = {}) {
             let path = pathOrUrl.replace(/^https:\/\/graph\.microsoft\.com/i, '');
             if (!path.startsWith('/api/graph')) path = '/api/graph' + (path.startsWith('/') ? '' : '/') + path;
+            const headers = { Accept: accept };
+            if (contentType) headers['Content-Type'] = contentType;
             for (let attempt = 0; attempt < tries; attempt++) {
-                const res = await fetch(path, { headers: { Accept: accept }, cache: 'no-store' });
+                const res = await fetch(path, { method, headers, body, cache: 'no-store' });
                 if (res.status === 429) {
                     const header = res.headers.get('Retry-After');
                     const parsed = (header == null || header === '') ? NaN : Number(header);
@@ -2170,10 +2179,23 @@
                     continue;
                 }
                 if (res.status === 401) { graphState.connected = false; throw new Error('Not connected to OneNote'); }
-                if (!res.ok) throw new Error(`Graph request failed (${res.status})`);
-                return accept.includes('json') ? res.json() : res.text();
+                if (!res.ok) {
+                    let detail = '';
+                    try { detail = (await res.json())?.error?.message || ''; } catch (parseError) { /* ignore */ }
+                    throw new Error(`Graph request failed (${res.status})${detail ? ': ' + detail : ''}`);
+                }
+                if (accept.includes('json')) { try { return await res.json(); } catch (parseError) { return null; } }
+                return res.text();
             }
             throw new Error('Graph is throttling requests; try again shortly.');
+        }
+
+        function graphGet(pathOrUrl, opts) {
+            return graphRequest(pathOrUrl, { ...(opts || {}) });
+        }
+
+        function graphSend(pathOrUrl, { body, contentType = 'text/html' } = {}) {
+            return graphRequest(pathOrUrl, { method: 'POST', body, contentType, accept: 'application/json' });
         }
 
         async function graphGetAll(path) {
@@ -2195,6 +2217,28 @@
                 graphState.notebooks = [];
             }
             renderGraphImport();
+            await loadGraphSections();
+        }
+
+        // Sections of the currently selected notebook, for the "send page" target.
+        async function loadGraphSections() {
+            const notebookId = document.getElementById('graphNotebookSelect')?.value;
+            if (!notebookId) { graphState.sections = []; }
+            else {
+                try {
+                    graphState.sections = await graphGetAll(`/v1.0/me/onenote/notebooks/${encodeURIComponent(notebookId)}/sections?$select=id,displayName`);
+                } catch (error) {
+                    showToast(error.message);
+                    graphState.sections = [];
+                }
+            }
+            const select = document.getElementById('graphSectionSelect');
+            if (select) {
+                select.innerHTML = graphState.sections.map(s => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.displayName || 'Section')}</option>`).join('')
+                    || '<option value="">No sections</option>';
+            }
+            const pushBtn = document.getElementById('graphPushBtn');
+            if (pushBtn) pushBtn.disabled = !graphState.sections.length || !getActivePage();
         }
 
         async function importSelectedGraphNotebook() {
@@ -2238,6 +2282,30 @@
             } finally {
                 graphState.busy = false;
                 renderGraphImport();
+            }
+        }
+
+        async function pushActivePageToGraph() {
+            const page = getActivePage();
+            if (!page) return showToast('Open a page before sending it to OneNote.');
+            const sectionId = document.getElementById('graphSectionSelect')?.value;
+            if (!sectionId) return showToast('Choose a OneNote section to send the page to.');
+
+            const button = document.getElementById('graphPushBtn');
+            if (button) button.disabled = true;
+            try {
+                const created = await graphSend(
+                    `/v1.0/me/onenote/sections/${encodeURIComponent(sectionId)}/pages`,
+                    { body: pageToGraphContent(page), contentType: 'text/html' }
+                );
+                const url = created && created.links && created.links.oneNoteWebUrl && created.links.oneNoteWebUrl.href;
+                showToast(url ? 'Page created in OneNote — opening it.' : 'Page created in OneNote.');
+                if (url) window.open(url, '_blank', 'noopener');
+            } catch (error) {
+                console.error('Graph push failed', error);
+                showToast(error.message || 'Sending the page to OneNote failed.');
+            } finally {
+                if (button) button.disabled = false;
             }
         }
 
