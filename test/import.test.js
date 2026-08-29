@@ -24,19 +24,59 @@ test('HTML import: page shape and sanitisation', async (t) => {
     const page = pages[0]; // parseHtmlImport unshifts
     assert.equal(page.title, 'Quarterly Planning', 'title from <title>');
     assert.deepEqual(plain(page.tags), ['Imported OneNote']);
-    assert.equal(page.blocks.length, 1, 'whole body collapses into one block (REVIEW §2)');
+    // One positioned outline + stray body content outside it -> two blocks.
+    assert.equal(page.blocks.length, 2);
 
-    const html = page.blocks[0].content;
+    const outline = page.blocks[0].content;
+    const html = page.blocks.map((b) => b.content).join('\n');
     assert.doesNotMatch(html, /<script/i);
     assert.doesNotMatch(html, /onclick/i);
     assert.doesNotMatch(html, /onerror/i);
-    assert.match(html, /data-tag="to-do"/, 'data-tag preserved');
-    assert.match(html, /data-tag="to-do:completed"/);
-    assert.match(html, /position:\s*absolute/, 'positioned outline preserved (but not split out)');
-    assert.match(html, /<table/i);
-    assert.match(html, /<img[^>]+src="data:image\/png/i, 'inline data-URL image kept');
+    assert.match(outline, /data-tag="to-do"/, 'data-tag preserved');
+    assert.match(outline, /data-tag="to-do:completed"/);
+    assert.match(outline, /<table/i);
+    assert.match(outline, /<img[^>]+src="data:image\/png/i, 'inline data-URL image kept');
     assert.doesNotMatch(html, /<object/i, '<object> replaced by a span');
-    assert.match(html, /class="inline-attachment"[^>]+data-attachment-id=/);
+    assert.match(outline, /class="inline-attachment"[^>]+data-attachment-id=/);
+    // The wrapping position:absolute <div> is consumed, not kept in content.
+    assert.doesNotMatch(outline, /position:\s*absolute/);
+    assert.equal(page.blocks[0].x, 48);
+    assert.equal(page.blocks[0].y, 115);
+    assert.equal(page.blocks[0].width, 624);
+    assert.match(page.blocks[1].content, /Do not run me/, 'stray body content kept as a trailing block');
+});
+
+test('HTML import: positioned outlines become separate blocks with geometry (REVIEW §2)', async (t) => {
+    const { window, dispose } = createApp();
+    t.after(dispose);
+    seedNotebook(window);
+
+    await window.parseHtmlImport(fixtureFile(window, 'onenote-multi-outline.html', 'text/html', 'onenote-multi-outline.html'));
+    const page = getState(window).notebooks[0].sections[0].pages[0];
+
+    assert.equal(page.blocks.length, 2, 'one block per outline, no trailing block');
+    assert.deepEqual(
+        plain(page.blocks).map((b) => ({ x: b.x, y: b.y, width: b.width })),
+        [{ x: 48, y: 115, width: 624 }, { x: 64, y: 520, width: 300 }], // second outline is in pt
+    );
+    assert.match(page.blocks[0].content, /data-tag="important"/);
+    assert.match(page.blocks[1].content, /<table/i);
+    assert.doesNotMatch(page.blocks[0].content, /Second outline/);
+});
+
+test('HTML import: a document with no positioned outlines stays one block', async (t) => {
+    const { window, dispose } = createApp();
+    t.after(dispose);
+    seedNotebook(window);
+
+    await window.parseHtmlImport(fixtureFile(window, 'plain.html', 'text/html', 'plain.html'));
+    const page = getState(window).notebooks[0].sections[0].pages[0];
+
+    assert.equal(page.blocks.length, 1);
+    assert.equal(page.blocks[0].x, 0);
+    assert.equal(page.blocks[0].y, 0);
+    assert.equal(page.blocks[0].width, undefined);
+    assert.match(page.blocks[0].content, /data-tag="to-do"/);
 });
 
 test('HTML import: embedded <object data-attachment> becomes a stored attachment', async (t) => {
@@ -133,6 +173,11 @@ test('ZIP import: section from filename, pages sorted, folder depth -> level', a
     assert.equal(pageOne.attachments[0].name, 'attachment.txt');
     assert.match(pageOne.blocks[0].content, /class="inline-attachment"/);
     assert.match(pageOne.blocks[0].content, /data-tag="to-do"/);
+    // The single positioned outline carries its geometry.
+    assert.deepEqual(
+        { x: pageOne.blocks[0].x, y: pageOne.blocks[0].y, width: pageOne.blocks[0].width },
+        { x: 48, y: 90, width: 600 },
+    );
 });
 
 test('ZIP import: <img> whose bytes live in a *_files/ folder is inlined as a data URL (REVIEW §2)', async (t) => {
