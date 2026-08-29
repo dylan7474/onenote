@@ -56,6 +56,8 @@ keep `doc.body.innerHTML` verbatim in a single block and only special-case
   `new Date()` (`index.html:2122-2123`). OneNote HTML carries
   `<meta name="created">` / `<meta name="lastModified">`; Graph gives
   `createdDateTime`/`lastModifiedDateTime`. Read them.
+  _Status: done in Phase 1 (#27) for the HTML/ZIP importers (`readDocDates()`);
+  Graph's JSON fields are the Phase 4 slice._
 - **Page title.** `doc.title` is right for single-page export, but OneNote's
   "export whole section as one HTML file" produces one document with many
   `<h1>`-delimited pages. Split on the page separators rather than making one
