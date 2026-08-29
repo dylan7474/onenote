@@ -79,9 +79,11 @@ There is no way to get content into real OneNote. Add:
   files. Same shape the importer reads, so it also gives lossless self
   round-trip.
 
-_Status: page export done in Phase 2 (#31) — `pageToOneNoteHtml()` + a "Export
-page as HTML" menu item; `test/export.test.js` verifies an export → re-import
-round-trip. Clipboard "Copy page as HTML" and section export are still open._
+_Status: done in Phase 2 (#31–#32). `pageToOneNoteHtml()` /
+`sectionToOneNoteHtml()` + File-menu "Export page / section as HTML" and "Copy
+page as HTML" (`navigator.clipboard.write` of `text/html`). `test/export.test.js`
+verifies page and section export → re-import round-trips (subpage level rides on
+a `data-level` attribute)._
 
 ## 4. Align the data model with Graph's schema
 

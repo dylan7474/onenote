@@ -84,9 +84,13 @@ live interoperability.
 HTML" shape the Microsoft Graph OneNote API accepts: a `<head>` with
 created/modified meta, one absolutely-positioned `<div>` per note block,
 checkboxes as `<p data-tag="to-do">`, and attachments as `<object
-data-attachment>` with embedded data URLs. Re-importing that file reproduces
-the page. (Page-level tag chips other than the `to-do` checkbox are not carried
-— OneNote's content HTML has no page-tag slot.)
+data-attachment>` with embedded data URLs. **Export section as HTML** writes the
+whole section as one document — an `<h1>` per page (with `data-level` for
+subpages) — and **Copy page as HTML** puts the same page markup on the clipboard
+(`text/html`) to paste straight into desktop OneNote. Re-importing an exported
+file reproduces the page(s), subpage nesting included. (Page-level tag chips
+other than the `to-do` checkbox are not carried — OneNote's content HTML has no
+page-tag slot.)
 
 ## Deploy with Docker
 
