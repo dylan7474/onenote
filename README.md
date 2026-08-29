@@ -19,8 +19,14 @@ PORT=3020 DATA_FILE=./data/state.json node server.js
 ```
 
 Open <http://localhost:3020>. Do not open `index.html` directly: the application
-uses the server's `/api/state` endpoint to save and restore data. `DATA_FILE`
-defaults to `./data/state.json`, and request bodies are limited to 50 MiB.
+uses the server's `/api/state` endpoint to save and restore data, and loads its
+browser libraries from `/vendor/`. `DATA_FILE` defaults to `./data/state.json`,
+and request bodies are limited to 50 MiB.
+
+DOMPurify, Lucide and JSZip are checked into `vendor/` at pinned versions and
+served by `server.js`; imported and edited HTML is sanitised through that
+DOMPurify build before it is stored or rendered. See `vendor/README.md` for
+provenance. Tailwind and the Inter web font are still loaded from a CDN.
 
 ## Using file attachments
 
@@ -39,7 +45,14 @@ large archives.
 HTML imports can recover an attachment only when its OneNote `<object
 data-attachment>` contains an embedded data URL. ZIP imports can also resolve a
 referenced payload stored in the ZIP alongside the HTML page. Native `.one` and
-`.onepkg` files remain unsupported.
+`.onepkg` files remain unsupported. The formats themselves are documented by
+Microsoft ([MS-ONESTORE] for the revision-store file, [MS-ONE] for the content
+schema; `.onepkg` is a CAB archive of `.one` files), so a read-only importer is
+feasible but out of scope here — use Microsoft 365 / the Graph OneNote API for
+live interoperability.
+
+[MS-ONESTORE]: https://learn.microsoft.com/openspecs/office_file_formats/ms-onestore/
+[MS-ONE]: https://learn.microsoft.com/openspecs/office_file_formats/ms-one/
 
 ## Deploy with Docker
 

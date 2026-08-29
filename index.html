@@ -26,10 +26,16 @@
             }
         }
     </script>
+    <!-- Version-pinned browser libraries, vendored under vendor/ and served by
+         server.js from /vendor (see vendor/README.md for provenance). Kept local
+         so imported OneNote HTML is sanitised by a known DOMPurify build and the
+         app has no runtime dependency on third-party CDNs. -->
+    <!-- DOMPurify: sanitises imported and edited HTML before it is stored or rendered. -->
+    <script src="/vendor/dompurify.min.js"></script>
     <!-- Lucide Icons -->
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="/vendor/lucide.min.js"></script>
     <!-- JSZip for parsing exported OneNote ZIP archives -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="/vendor/jszip.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         body {
@@ -509,6 +515,13 @@
 
         // On App Load
         window.addEventListener('load', async () => {
+            if (typeof DOMPurify === 'undefined' || typeof JSZip === 'undefined' || typeof lucide === 'undefined') {
+                document.body.innerHTML = '<div style="padding:2rem;font:16px/1.5 sans-serif">'
+                    + 'Required assets failed to load from <code>/vendor/</code>. '
+                    + 'Start the app through <code>server.js</code> (it serves that directory) rather than opening the file directly.'
+                    + '</div>';
+                return;
+            }
             lucide.createIcons();
             await loadStateFromServer();
             if (!state.notebooks || state.notebooks.length === 0) {
@@ -519,6 +532,7 @@
             setupWindowResize();
             setupTableGridMatrix();
             setupTableEventListeners();
+            document.getElementById('pageWorkspace').addEventListener('change', handleCheckboxToggle);
         });
 
         function chooseAttachments() {
@@ -590,7 +604,7 @@
             const editor = range.startContainer.parentElement?.closest('.editable-content') || document.querySelector('.editable-content');
             const block = editor?.closest('.note-block');
             const storedBlock = page?.blocks?.find(item => item.id === block?.id);
-            if (storedBlock && editor) storedBlock.content = editor.innerHTML;
+            if (storedBlock && editor) storedBlock.content = sanitizeHtml(editor.innerHTML);
             attachmentInsertionRange = null;
         }
 
@@ -736,9 +750,9 @@
                                     {
                                         id: 'blk_2',
                                         content: `<h3>⚡ Quick Action Checklist</h3>
-                                        <div><input type="checkbox" checked onclick="this.setAttribute('checked', this.checked)"> Try clicking anywhere to add content</div>
-                                        <div><input type="checkbox" onclick="this.setAttribute('checked', this.checked)"> Click 'Import OneNote' in top right</div>
-                                        <div><input type="checkbox" onclick="this.setAttribute('checked', this.checked)"> Test the Ink Drawing toolbar</div>`,
+                                        <div><input type="checkbox" checked> Try clicking anywhere to add content</div>
+                                        <div><input type="checkbox"> Click 'Import OneNote' in top right</div>
+                                        <div><input type="checkbox"> Test the Ink Drawing toolbar</div>`,
                                         x: 0,
                                         y: 280
                                     }
@@ -1091,7 +1105,7 @@
                         <button onclick="deleteBlock('${block.id}')" class="hover:text-red-500 p-0.5"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
                     </div>
                     <div contenteditable="true" onmouseup="rememberAttachmentInsertionPoint()" onkeyup="rememberAttachmentInsertionPoint()" onblur="saveBlockContent('${block.id}', this)" class="editable-content min-h-[60px] text-slate-800 dark:text-slate-100 focus:outline-none">
-                        ${block.content || ''}
+                        ${sanitizeHtml(block.content)}
                     </div>
                 </div>
             `).join('') + renderAttachments((page.attachments || []).filter(item => !documentAttachmentIds(page).has(item.id)));
@@ -1125,7 +1139,7 @@
             const ids = new Set();
             (page.blocks || []).forEach(block => {
                 const template = document.createElement('template');
-                template.innerHTML = block.content || '';
+                template.innerHTML = sanitizeHtml(block.content);
                 template.content.querySelectorAll('[data-attachment-id]').forEach(node => ids.add(node.dataset.attachmentId));
             });
             return ids;
@@ -1187,7 +1201,7 @@
             if (!page || !page.blocks) return;
             const block = page.blocks.find(b => b.id === blockId);
             if (block) {
-                block.content = el.innerHTML;
+                block.content = sanitizeHtml(el.innerHTML);
                 page.updatedAt = new Date().toISOString();
                 saveStateToStorage();
                 renderPages();
@@ -1389,7 +1403,7 @@
         }
 
         function insertCheckbox() {
-            const html = `<div><input type="checkbox" onclick="this.setAttribute('checked', this.checked)"> &nbsp;New Task Item</div>`;
+            const html = `<div><input type="checkbox"> &nbsp;New Task Item</div>`;
             document.execCommand('insertHTML', false, html);
         }
 
@@ -2079,7 +2093,7 @@
                 const reader = new FileReader();
                 reader.onload = function(e) {
                     try {
-                        const importedData = normalizeImportedNotebookData(JSON.parse(e.target.result));
+                        const importedData = sanitizeImportedTree(normalizeImportedNotebookData(JSON.parse(e.target.result)));
                         if (importedData.notebooks) {
                             // Full Notebook backup
                             state.notebooks.push(...importedData.notebooks);
@@ -2112,7 +2126,7 @@
 
                     const pageTitle = doc.title || doc.querySelector('h1')?.innerText || file.name.replace(/\.[^/.]+$/, "");
                     const attachments = await extractOneNoteAttachments(doc);
-                    const bodyContent = doc.body ? doc.body.innerHTML : htmlText;
+                    const bodyContent = sanitizeHtml(doc.body ? doc.body.innerHTML : htmlText);
 
                     const sec = getActiveSection();
                     if (sec) {
@@ -2180,7 +2194,7 @@
                         blocks: [
                             {
                                 id: 'blk_' + Date.now(),
-                                content: doc.body ? doc.body.innerHTML : htmlContent,
+                                content: sanitizeHtml(doc.body ? doc.body.innerHTML : htmlContent),
                                 x: 0,
                                 y: 0
                             }
@@ -2232,8 +2246,8 @@
                                         </ul>
                                         <br>
                                         <h3>Action Items</h3>
-                                        <div><input type="checkbox" checked onclick="this.setAttribute('checked', this.checked)"> Draft software specification</div>
-                                        <div><input type="checkbox" onclick="this.setAttribute('checked', this.checked)"> Design responsive grid components</div>`,
+                                        <div><input type="checkbox" checked> Draft software specification</div>
+                                        <div><input type="checkbox"> Design responsive grid components</div>`,
                                         x: 0,
                                         y: 0
                                     }
@@ -2309,6 +2323,62 @@
                 toast.classList.add('opacity-0');
                 setTimeout(() => toast.remove(), 300);
             }, 3000);
+        }
+
+        // HTML sanitisation. Imported OneNote HTML and contenteditable output are
+        // untrusted and must pass through DOMPurify before being stored or
+        // rendered. The allowlist deliberately preserves the structure OneNote
+        // and the Microsoft Graph OneNote API depend on: data-* attributes
+        // (data-tag, data-id, data-render-src, data-fullres-src, ...), inline
+        // styles (including absolute-positioned outlines), and full table markup.
+        // Inline event handlers (onclick, onerror, ...) and script/object/embed
+        // are dropped.
+        const SANITIZE_CONFIG = {
+            ADD_ATTR: ['target', 'contenteditable'],
+            FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form', 'base', 'link', 'meta'],
+            ALLOW_DATA_ATTR: true
+        };
+
+        function sanitizeHtml(dirty) {
+            if (dirty == null || dirty === '') return '';
+            const html = String(dirty);
+            if (typeof DOMPurify === 'undefined') {
+                // Startup guards should prevent this; never silently discard data.
+                console.error('DOMPurify unavailable; HTML left unsanitised.');
+                return html;
+            }
+            return DOMPurify.sanitize(html, SANITIZE_CONFIG);
+        }
+
+        // Sanitise every block body inside an imported notebook/section/page tree
+        // in place, covering full-backup, single-notebook and section JSON shapes.
+        function sanitizeImportedTree(value) {
+            const notebooks = Array.isArray(value?.notebooks) ? value.notebooks
+                : Array.isArray(value?.sections) ? [value]
+                : [];
+            notebooks.forEach(nb => (nb.sections || []).forEach(sec => sanitizeImportedPages(sec.pages)));
+            if (Array.isArray(value?.pages)) sanitizeImportedPages(value.pages);
+            return value;
+        }
+
+        function sanitizeImportedPages(pages) {
+            (pages || []).forEach(page => (page.blocks || []).forEach(block => {
+                if (typeof block.content === 'string') block.content = sanitizeHtml(block.content);
+            }));
+        }
+
+        // Persist checkbox state into the stored block HTML. The sample content
+        // used an inline onclick for this; inline handlers are stripped by
+        // sanitizeHtml, so it is handled here via event delegation instead.
+        function handleCheckboxToggle(event) {
+            const box = event.target;
+            if (!(box instanceof HTMLInputElement) || box.type !== 'checkbox') return;
+            const editor = box.closest('.editable-content');
+            const blockEl = box.closest('.note-block');
+            if (!editor || !blockEl) return;
+            if (box.checked) box.setAttribute('checked', 'checked');
+            else box.removeAttribute('checked');
+            saveBlockContent(blockEl.id, editor);
         }
 
         // Escape HTML

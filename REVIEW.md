@@ -113,15 +113,18 @@ via cdnjs; `unpkg` for Lucide at `index.html:30` is a supply-chain soft spot).
 
 ## 7. `.one` / `.onepkg` — README framing is inaccurate
 
-The README calls the format undocumented. It is not: Microsoft publishes
-**[MS-ONESTORE]** (the revision-store file) and **[MS-ONE]** (the property set /
-content schema) as open specifications, and `.onepkg` is a CAB archive of
-`.one` files. A **read-only** importer is feasible (parse CAB → parse ONESTORE
-object space → walk [MS-ONE] properties → emit the block model), though it is a
-multi-week effort and the output still has to be lowered to HTML. Recommend
-Graph first, but the README should say "documented but complex binary format".
-An intermediate `.onepkg` CAB-extraction step that reports "N .one files found,
+`.one`/`.onepkg` is widely assumed to be an undocumented binary blob. It is
+not: Microsoft publishes **[MS-ONESTORE]** (the revision-store file) and
+**[MS-ONE]** (the property set / content schema) as open specifications, and
+`.onepkg` is a CAB archive of `.one` files. A **read-only** importer is
+feasible (parse CAB → parse ONESTORE object space → walk [MS-ONE] properties →
+emit the block model), though it is a multi-week effort and the output still
+has to be lowered to HTML. Recommend Graph first; the README should describe it
+as a "documented but complex binary format" rather than simply unsupported. An
+intermediate `.onepkg` CAB-extraction step that reports "N .one files found,
 native parsing not yet supported" would be honest.
+
+_Status: README updated with the [MS-ONESTORE]/[MS-ONE] pointers in Phase 0._
 
 ## 8. Section colors
 
