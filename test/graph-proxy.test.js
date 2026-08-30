@@ -97,3 +97,38 @@ test('/api/graph over the server: disabled by default, enabled with GRAPH_CLIENT
     // proxy without a connected session
     assert.equal((await req(base, 'GET', '/api/graph/v1.0/me')).status, 401);
 });
+
+test('/api/graph/resource: gated by config, session, and a graph.microsoft.com allowlist', async (t) => {
+    clearGraphEnv();
+    delete require.cache[require.resolve('../server.js')];
+    const { server } = require('../server.js');
+    await new Promise((r) => server.listen(0, r));
+    const base = `http://127.0.0.1:${server.address().port}`;
+    t.after(() => {
+        server.close();
+        clearGraphEnv();
+        graph.reloadConfig();
+        for (const k of [...graph._sessions.keys()]) graph._sessions.delete(k);
+    });
+
+    const RES = 'https://graph.microsoft.com/v1.0/users/u/onenote/resources/1-x/$value';
+
+    // disabled entirely
+    graph.reloadConfig();
+    assert.equal((await req(base, 'GET', '/api/graph/resource?url=' + encodeURIComponent(RES))).status, 501);
+
+    // enabled, but no connected session
+    process.env.GRAPH_CLIENT_ID = 'test-client';
+    graph.reloadConfig();
+    assert.equal((await req(base, 'GET', '/api/graph/resource?url=' + encodeURIComponent(RES))).status, 401);
+
+    // enabled + connected session: the URL must be a graph.microsoft.com
+    // resource, and validation happens before any outbound request
+    const sid = 'sess_' + 'a'.repeat(16);
+    graph._sessions.set(sid, { accessToken: 'tok', expiresAt: Date.now() + 3600e3 });
+    const withSession = (p) => req(base, 'GET', p, { headers: { cookie: `onenote_gsid=${sid}` } });
+
+    assert.equal((await withSession('/api/graph/resource')).status, 400, 'missing url rejected');
+    assert.equal((await withSession('/api/graph/resource?url=' + encodeURIComponent('https://evil.example/x'))).status, 400, 'off-host url rejected');
+    assert.equal((await withSession('/api/graph/resource?url=' + encodeURIComponent('http://graph.microsoft.com/v1.0/x'))).status, 400, 'non-https rejected');
+});

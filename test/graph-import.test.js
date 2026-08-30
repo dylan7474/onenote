@@ -105,3 +105,75 @@ test('graphGet surfaces a 401 as "not connected"', async (t) => {
     await assert.rejects(() => window.graphGet('/v1.0/me/onenote/notebooks'), /not connected/i);
     assert.equal(window.graphState.connected, false);
 });
+
+// --- Graph-hosted images / file attachments pulled in via the resource proxy --
+
+const PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+const RES = (id) => `https://graph.microsoft.com/v1.0/users/u/onenote/resources/${id}/$value`;
+const PAGE_WITH_RESOURCES = `<!DOCTYPE html><html><head><title>Assets</title></head><body>`
+    + `<div style="position:absolute;left:0px;top:0px">`
+    + `<p>See the chart</p>`
+    + `<img src="${RES('1-img')}" data-fullres-src="${RES('1-full')}" alt="chart">`
+    + `<object data-attachment="report.pdf" data="${RES('2-pdf')}" type="application/pdf"></object>`
+    + `</div></body></html>`;
+
+function graphTreeRoutes(contentRoute, resourceRoute) {
+    return [
+        ['/api/graph/config', { json: { enabled: true, connected: true } }],
+        ['/onenote/notebooks?', { json: { value: [{ id: 'nb1', displayName: 'Work' }] } }],
+        ['/notebooks/nb1/sections', { json: { value: [{ id: 's1', displayName: 'Sec A' }] } }],
+        ['/sections/s1/pages', { json: { value: [{ id: 'p1', title: 'Assets', level: 0, order: 0 }] } }],
+        ['/pages/p1/content', contentRoute],
+        ['/api/graph/resource?url=', resourceRoute],
+    ];
+}
+
+test('Graph import inlines Graph-hosted images and stores linked files via the resource proxy', async (t) => {
+    const PDF_B64 = Buffer.from('%PDF-1.4 tiny', 'utf8').toString('base64');
+    const hits = [];
+    const routes = graphTreeRoutes({ text: PAGE_WITH_RESOURCES }, (url) => {
+        hits.push(url);
+        return url.includes('2-pdf')
+            ? { json: { type: 'application/pdf', data: PDF_B64 } }
+            : { json: { type: 'image/png', data: PNG_B64 } };
+    });
+
+    const { window, dispose } = createApp({ onFetch: makeFetch(routes) });
+    t.after(dispose);
+    seedNotebook(window);
+
+    await window.refreshGraphStatus();
+    await window.importSelectedGraphNotebook();
+
+    const page = getState(window).notebooks.at(-1).sections[0].pages[0];
+    const html = page.blocks.map((b) => b.content).join('');
+
+    assert.ok(html.includes(`src="data:image/png;base64,${PNG_B64}"`), 'image inlined as a data URL');
+    assert.doesNotMatch(html, /graph\.microsoft\.com/, 'no live Graph URLs left in the content');
+    assert.doesNotMatch(html, /data-fullres-src/, 'fullres hint dropped once inlined');
+
+    assert.equal(plain(page.attachments).length, 1);
+    assert.equal(page.attachments[0].name, 'report.pdf');
+    assert.equal(page.attachments[0].type, 'application/pdf');
+    assert.equal(window.atob(page.attachments[0].data), '%PDF-1.4 tiny');
+    assert.doesNotMatch(html, /\(unavailable\)/);
+
+    assert.equal(hits.filter((u) => u.startsWith('/api/graph/resource?url=')).length, 2, 'both resources fetched via the proxy');
+});
+
+test('Graph import survives a resource the proxy cannot fetch (falls back to the placeholder)', async (t) => {
+    const routes = graphTreeRoutes({ text: PAGE_WITH_RESOURCES }, { status: 502, json: { error: 'Graph resource returned 500' } });
+
+    const { window, dispose } = createApp({ onFetch: makeFetch(routes) });
+    t.after(dispose);
+    seedNotebook(window);
+
+    await window.refreshGraphStatus();
+    await window.importSelectedGraphNotebook(); // must not throw
+
+    const page = getState(window).notebooks.at(-1).sections[0].pages[0];
+    const html = page.blocks.map((b) => b.content).join('');
+
+    assert.equal(plain(page.attachments).length, 0, 'unreachable file is not stored');
+    assert.match(html, /report\.pdf \(unavailable\)/, 'the <object> becomes the unavailable placeholder');
+});

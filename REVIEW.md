@@ -27,11 +27,14 @@ There is currently no connection to Microsoft 365, and the README frames
 This does more for OneNote compatibility than everything below combined. The
 rest is about not losing data on the file-based path in the meantime.
 
-_Status: Phase 4 complete (#37–#39). Server-side OAuth + `/api/graph/*` proxy
-(`graph.js`); the Import dialog's "Microsoft OneNote (live)" panel signs in,
-imports a chosen notebook (pagination + 429 back-off, via `notebookFromGraph()`),
-and sends the open page to a chosen section (`pushActivePageToGraph()` →
-`POST .../pages` with `pageToGraphContent()`). All config-gated by
+_Status: Phase 4 complete (#37–#39), extended in #41. Server-side OAuth +
+`/api/graph/*` proxy (`graph.js`); the Import dialog's "Microsoft OneNote (live)"
+panel signs in, imports a chosen notebook (pagination + 429 back-off, via
+`notebookFromGraph()`), and sends the open page to a chosen section
+(`pushActivePageToGraph()` → `POST .../pages` with `pageToGraphContent()`).
+#41 added `/api/graph/resource?url=` so a page's Graph-hosted images and file
+attachments are pulled in over the authenticated proxy (data URLs / stored
+attachments) instead of importing as broken links. All config-gated by
 `GRAPH_CLIENT_ID`._
 
 ## 2. HTML import silently drops the most common content
@@ -194,12 +197,18 @@ _Status: all four resolved in Phase 1 (#25, #29)._
   with a matching (unique) basename, covering `*_files/` and `attachments/`.
 - `extractOneNoteAttachments` size calc ignored base64 padding. **Fixed
   (#29)** — `base64ByteLength()` subtracts the `=` padding.
-- Graph-sourced `<object data-attachment>` with a
+- Graph-sourced `<object data-attachment>` / `<img>` with a
   `https://graph.microsoft.com/.../resources/...` URL cannot be fetched at
-  import time. **Fixed (#29)** — it becomes a dimmed
+  import time. **Fixed (#29)** for the file-drop path — it becomes a dimmed
   `inline-attachment attachment-unresolved` span carrying
   `data-attachment-source` and a "(unavailable)" label, with no dangling
-  attachment id. Loading it for real is the Phase 4 Graph slice.
+  attachment id. **Resolved for real on the Graph import path (#41):** a
+  `/api/graph/resource?url=` server endpoint (allowlisted to
+  `graph.microsoft.com`, follows the resource `$value` redirect, bearer token
+  never forwarded off-host) fetches the bytes; `pageFromGraph()` passes
+  `graphResolveResource` into `extractOneNoteAttachments()` / `inlineImages()`
+  so images inline as data URLs and files land as stored attachments. A fetch
+  failure still falls back to the "(unavailable)" placeholder.
 
 ---
 
