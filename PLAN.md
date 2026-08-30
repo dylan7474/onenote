@@ -113,9 +113,17 @@ Low priority; do only if Graph does not cover the need.
 
 - `.onepkg` = CAB archive → extract, list contained `.one` files, report
   "native parsing not yet supported" as an honest intermediate. (§7)
+  — **done.** `parseOnePkgImport()` reads just the MS-CAB directory
+  (`listCabinetFiles()`: CFHEADER → CFFILE walk, no decompression), lists the
+  contained `.one` sections with sizes, and shows a persistent Import-dialog
+  notice (`showImportNotice()` / `#importNotice`) pointing at the HTML/ZIP
+  export and Microsoft Graph paths. Bare `.one` files are recognised and
+  reported the same way. No binary content is parsed and no state is mutated.
+  `test/import.test.js` covers the cabinet inventory, the non-cabinet and bare
+  `.one` cases, and the notice rendering/escaping.
 - Full read-only `.one` parser (CAB → [MS-ONESTORE] object space → [MS-ONE]
   properties → block model → HTML). Multi-week; only with real demand for
-  offline/legacy files.
+  offline/legacy files. — not started.
 
 ---
 
