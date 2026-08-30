@@ -68,9 +68,11 @@ section (several `<h1>`-headed pages) is split into one page each, and a ZIP
 whose subpages are named `Foo 1.html` / `Foo 2.html` alongside `Foo.html` keeps
 that nesting. `data-tag` markup is mapped on
 import: `to-do` becomes a checkbox, and the other tag values (`important`,
-`question`, …) become page tag chips. An `<object>` attachment that points at a
-remote URL (e.g. a Microsoft Graph resource) is shown as an "unavailable"
-placeholder, since loading it needs an authenticated request. Native `.one` and
+`question`, …) become page tag chips. On a *file* import, an `<object>`
+attachment or `<img>` that points at a remote URL (e.g. a Microsoft Graph
+resource) is shown as an "unavailable" placeholder, since loading it needs an
+authenticated request; a *live* Graph import (below) does fetch those through
+the signed-in proxy, so images inline and files come across. Native `.one` and
 `.onepkg` files are **inspected but not parsed**: dropping a `.onepkg` reads its
 MS-CAB directory and lists the `.one` sections it contains (with sizes), a
 `.one` file is recognised by name, and either way the Import dialog explains
@@ -121,17 +123,22 @@ node server.js
 ```
 
 The server exposes `/api/graph/config`, `/api/graph/login` (→ Microsoft
-sign-in), `/api/graph/callback`, `/api/graph/logout`, and a
-`/api/graph/v1.0/*` passthrough to `https://graph.microsoft.com/v1.0/*` that
-attaches the user's bearer token (refreshed on expiry). Tokens live only in the
+sign-in), `/api/graph/callback`, `/api/graph/logout`, a `/api/graph/v1.0/*`
+passthrough to `https://graph.microsoft.com/v1.0/*` that attaches the user's
+bearer token (refreshed on expiry), and `/api/graph/resource?url=<graph
+resource url>` which fetches a page's linked image/file bytes with that token
+(allowlisted to `graph.microsoft.com`; the token is never forwarded to the
+pre-signed blob URL the resource redirects to). Tokens live only in the
 server's memory, keyed by the `onenote_gsid` session cookie.
 
 Once enabled, the **Import OneNote** dialog shows a **Microsoft OneNote (live)**
 panel: connect, pick a notebook, and **Import selected notebook** pulls its
 sections and pages (following `@odata.nextLink` pagination and backing off on
-`429`) straight into the app. The same panel can **send the open page to a
-OneNote section** — it POSTs the page's OneNote-compatible HTML and opens the
-new page in OneNote on the web.
+`429`) straight into the app — including each page's embedded images (inlined as
+data URLs) and file attachments (fetched via `/api/graph/resource`; a fetch that
+fails leaves the "unavailable" placeholder). The same panel can **send the open
+page to a OneNote section** — it POSTs the page's OneNote-compatible HTML and
+opens the new page in OneNote on the web.
 
 ## Deploy with Docker
 

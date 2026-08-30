@@ -2216,6 +2216,27 @@
             return items;
         }
 
+        function isGraphResourceUrl(value) {
+            return /^https:\/\/graph\.microsoft\.com\/(v1\.0|beta)\//i.test(String(value || ''));
+        }
+
+        // Fetch an image / file that a Graph OneNote page links to by absolute
+        // graph.microsoft.com URL, through the authenticated proxy. Shaped like a
+        // `resolveFile` callback ({ type, data: base64 }); returns null on any
+        // failure so callers fall back to the "unavailable" placeholder.
+        async function graphResolveResource(url) {
+            if (!isGraphResourceUrl(url)) return null;
+            try {
+                const res = await fetch('/api/graph/resource?url=' + encodeURIComponent(url), { cache: 'no-store' });
+                if (!res.ok) return null;
+                const payload = await res.json();
+                if (!payload || !payload.data) return null;
+                return { type: payload.type || 'application/octet-stream', data: payload.data };
+            } catch (error) {
+                return null;
+            }
+        }
+
         async function loadGraphNotebooks() {
             try {
                 graphState.notebooks = await graphGetAll('/v1.0/me/onenote/notebooks?$select=id,displayName&$orderby=displayName');
@@ -2531,7 +2552,11 @@
                 const source = node.getAttribute('data') || node.getAttribute('src') || '';
                 const remote = /^https?:/i.test(source);
                 let payload = decodeDataUrl(source);
-                if (!payload && resolveFile && !remote) payload = await resolveFile(source);
+                // Local refs always go through resolveFile; a remote ref only if
+                // the resolver can authenticate it (a Graph resource URL).
+                if (!payload && resolveFile && (!remote || isGraphResourceUrl(source))) {
+                    payload = await resolveFile(source);
+                }
 
                 const link = doc.createElement('span');
                 link.className = 'inline-attachment';
@@ -2578,7 +2603,9 @@
                 if (!source || /^data:/i.test(source)) continue;
 
                 let payload = decodeDataUrl(source);
-                if (!payload && resolveFile && !/^https?:/i.test(source)) {
+                // Local refs resolve from the import; a remote ref only if the
+                // resolver can authenticate it (a Graph resource URL).
+                if (!payload && resolveFile && (!/^https?:/i.test(source) || isGraphResourceUrl(source))) {
                     payload = await resolveFile(source);
                 }
                 if (!payload?.data) continue;
@@ -3152,7 +3179,9 @@
         async function pageFromGraph(graphPage) {
             const html = (graphPage && graphPage.content) || '';
             const doc = new DOMParser().parseFromString(html, 'text/html');
-            const attachments = await extractOneNoteAttachments(doc);
+            // Pull the page's Graph-hosted images/files in over the authenticated
+            // proxy so they land as self-contained data URLs, not broken links.
+            const attachments = await extractOneNoteAttachments(doc, graphResolveResource);
             const tags = new Set(['Graph']);
             applyDataTags(doc, tags);
             return {

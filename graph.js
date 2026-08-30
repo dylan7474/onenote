@@ -17,6 +17,10 @@
 //   GET  /callback    -> exchanges ?code, stores the token in an in-memory
 //                        session keyed by the `onenote_gsid` cookie, 302 to /
 //   POST /logout      -> drops the session token
+//   GET  /resource?url=<graph resource url>
+//                     -> fetches a graph.microsoft.com resource (an image or
+//                        file a OneNote page links to) with the session token
+//                        and returns it as { type, data:<base64> }
 //   *    /v1.0/...     -> proxied to https://graph.microsoft.com/v1.0/... with
 //                        the session's bearer token (refreshed on expiry)
 
@@ -130,6 +134,40 @@ function httpsJson(method, urlString, { headers = {}, body } = {}) {
         req.on('error', reject);
         if (body) req.write(body);
         req.end();
+    });
+}
+
+// Like httpsJson but keeps the raw bytes — for binary Graph resources (images,
+// file attachments). Follows https redirects (Graph resource endpoints 302 to a
+// pre-signed blob URL); the Authorization header is dropped on any hop that
+// leaves graph.microsoft.com so the bearer token is never handed to another
+// host.
+function httpsBuffer(method, urlString, { headers = {}, body, limit = 25 * 1024 * 1024, maxRedirects = 5 } = {}) {
+    return new Promise((resolve, reject) => {
+        let u;
+        try { u = new URL(urlString); } catch { return reject(new Error('bad resource url')); }
+        if (u.protocol !== 'https:') return reject(new Error('only https resources are supported'));
+        const hdrs = { ...headers };
+        if (u.hostname !== GRAPH_HOST) delete hdrs.Authorization;
+        const request = https.request({ method, hostname: u.hostname, path: u.pathname + u.search, headers: hdrs }, (res) => {
+            if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location && maxRedirects > 0) {
+                res.resume();
+                const next = new URL(res.headers.location, urlString).toString();
+                httpsBuffer(method, next, { headers, body, limit, maxRedirects: maxRedirects - 1 }).then(resolve, reject);
+                return;
+            }
+            const chunks = [];
+            let size = 0;
+            res.on('data', (c) => {
+                size += c.length;
+                if (size > limit) { res.destroy(); reject(new Error('resource exceeds size limit')); return; }
+                chunks.push(c);
+            });
+            res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, buffer: Buffer.concat(chunks) }));
+        });
+        request.on('error', reject);
+        if (body) request.write(body);
+        request.end();
     });
 }
 
@@ -255,6 +293,42 @@ async function handle(req, res, url) {
         const sessionId = parseCookies(req.headers.cookie).onenote_gsid;
         if (sessionId) sessions.delete(sessionId);
         send(res, 200, { connected: false });
+        return true;
+    }
+
+    if (url.pathname === '/api/graph/resource' && req.method === 'GET') {
+        const sessionId = parseCookies(req.headers.cookie).onenote_gsid;
+        let accessToken;
+        try {
+            accessToken = sessionId && await validAccessToken(sessionId);
+        } catch (error) {
+            send(res, 502, { error: 'Token refresh failed', detail: error.message });
+            return true;
+        }
+        if (!accessToken) {
+            send(res, 401, { error: 'Not connected to Microsoft Graph' });
+            return true;
+        }
+        const resourceUrl = url.searchParams.get('url') || '';
+        if (!/^https:\/\/graph\.microsoft\.com\/(v1\.0|beta)\/\S+$/i.test(resourceUrl)) {
+            send(res, 400, { error: 'A Microsoft Graph resource URL is required' });
+            return true;
+        }
+        let upstream;
+        try {
+            upstream = await httpsBuffer('GET', resourceUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+        } catch (error) {
+            send(res, 502, { error: 'Graph resource fetch failed', detail: error.message });
+            return true;
+        }
+        if (upstream.status < 200 || upstream.status >= 300) {
+            send(res, upstream.status === 404 ? 404 : 502, { error: `Graph resource returned ${upstream.status}` });
+            return true;
+        }
+        send(res, 200, {
+            type: (upstream.headers['content-type'] || 'application/octet-stream').split(';')[0].trim(),
+            data: upstream.buffer.toString('base64'),
+        });
         return true;
     }
 
