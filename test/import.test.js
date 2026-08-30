@@ -318,3 +318,111 @@ test('decodeDataUrl: a malformed escape no longer aborts the import (REVIEW §9)
     assert.equal(out.type, 'text/plain');
     assert.equal(window.atob(out.data), '100%', 'raw body kept when decodeURIComponent fails');
 });
+
+// --- PLAN.md Phase 5: `.one` / `.onepkg` inventory (no native parsing) --------
+
+// Build a minimal but structurally valid MS-CAB cabinet: CFHEADER + one
+// CFFOLDER + a CFFILE record per entry. Only the fields `listCabinetFiles`
+// reads (`coffFiles`, `cFiles`, and each CFFILE's `cbFile` + NUL-terminated
+// name) need to be meaningful; folder data and compression are omitted.
+function makeCab(entries) {
+    const enc = new TextEncoder();
+    const names = entries.map((e) => enc.encode(e.name));
+    const HEADER = 36;
+    const FOLDER = 8;
+    const coffFiles = HEADER + FOLDER;
+    const filesLen = names.reduce((sum, n) => sum + 16 + n.length + 1, 0);
+    const buf = Buffer.alloc(coffFiles + filesLen);
+
+    buf.write('MSCF', 0, 'ascii');
+    buf.writeUInt32LE(buf.length, 8);        // cbCabinet
+    buf.writeUInt32LE(coffFiles, 16);        // coffFiles
+    buf.writeUInt8(3, 24);                   // versionMinor
+    buf.writeUInt8(1, 25);                   // versionMajor
+    buf.writeUInt16LE(1, 26);               // cFolders
+    buf.writeUInt16LE(entries.length, 28);  // cFiles
+
+    let off = coffFiles;
+    entries.forEach((e, i) => {
+        buf.writeUInt32LE(e.size >>> 0, off); // CFFILE.cbFile
+        Buffer.from(names[i]).copy(buf, off + 16);
+        buf.writeUInt8(0, off + 16 + names[i].length);
+        off += 16 + names[i].length + 1;
+    });
+    return buf;
+}
+
+const cabFile = (window, name, entries) =>
+    new window.File([new window.Uint8Array(makeCab(entries))], name, { type: '' });
+
+test('.onepkg import: inventories the contained .one files, reports no native parsing (PLAN Phase 5)', async (t) => {
+    const { window, dispose } = createApp();
+    t.after(dispose);
+    seedNotebook(window);
+
+    const file = cabFile(window, 'Team Notebook.onepkg', [
+        { name: '{4B4C7E60-1111-4A2B-9C3D-000000000001}.one', size: 4096 },
+        { name: 'OneToc2', size: 240 },
+        { name: '{4B4C7E60-2222-4A2B-9C3D-000000000002}.one', size: 2048 },
+    ]);
+    const report = await window.parseOnePkgImport(file);
+
+    assert.equal(report.ok, false);
+    assert.deepEqual(plain(report.oneFiles), [
+        '{4B4C7E60-1111-4A2B-9C3D-000000000001}.one (4.0 KB)',
+        '{4B4C7E60-2222-4A2B-9C3D-000000000002}.one (2.0 KB)',
+    ], 'only the .one members are listed, with sizes');
+    assert.match(report.message, /2 \.one section files/);
+    assert.match(report.message, /not supported yet/i);
+    assert.match(report.message, /Microsoft Graph/);
+    // Nothing was imported into the seeded notebook.
+    assert.equal(getState(window).notebooks[0].sections[0].pages.length, 1);
+});
+
+test('.onepkg import: a non-cabinet file is reported, not silently dropped', async (t) => {
+    const { window, dispose } = createApp();
+    t.after(dispose);
+    seedNotebook(window);
+
+    const file = new window.File([new window.Uint8Array([0x50, 0x4b, 0x03, 0x04, 1, 2, 3, 4])], 'bad.onepkg', { type: '' });
+    const report = await window.parseOnePkgImport(file);
+
+    assert.equal(report.ok, false);
+    assert.match(report.message, /not a readable OneNote package/);
+    assert.match(report.message, /MSCF/);
+});
+
+test('.one import: honest report about the binary format, no import', async (t) => {
+    const { window, dispose } = createApp();
+    t.after(dispose);
+    seedNotebook(window);
+
+    const file = new window.File([new window.Uint8Array(64)], 'Chapter 1.one', { type: '' });
+    const report = await window.parseOnePkgImport(file);
+
+    assert.equal(report.ok, false);
+    assert.deepEqual(plain(report.oneFiles), []);
+    assert.match(report.message, /native OneNote section file/);
+    assert.match(report.message, /MS-ONESTORE/);
+    assert.equal(getState(window).notebooks[0].sections[0].pages.length, 1);
+});
+
+test('showImportNotice: renders persistent, escaped advisories into the Import modal', (t) => {
+    const { window, dispose } = createApp();
+    t.after(dispose);
+
+    const notice = window.document.getElementById('importNotice');
+    assert.ok(notice, 'the modal has an #importNotice slot');
+    assert.ok(notice.classList.contains('hidden'), 'hidden until there is something to say');
+
+    window.showImportNotice(['a.onepkg: 1 .one section file — <x>.one (1 B).']);
+    assert.equal(notice.classList.contains('hidden'), false);
+    assert.match(notice.textContent, /a\.onepkg: 1 \.one section file/);
+    assert.doesNotMatch(notice.innerHTML, /<x>\.one/, 'message text is HTML-escaped');
+    assert.match(notice.innerHTML, /&lt;x&gt;\.one/);
+
+    // closeImportModal clears it so a stale notice never greets the next open.
+    window.closeImportModal();
+    assert.ok(notice.classList.contains('hidden'));
+    assert.equal(notice.innerHTML, '');
+});

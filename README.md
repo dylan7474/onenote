@@ -70,12 +70,16 @@ that nesting. `data-tag` markup is mapped on
 import: `to-do` becomes a checkbox, and the other tag values (`important`,
 `question`, …) become page tag chips. An `<object>` attachment that points at a
 remote URL (e.g. a Microsoft Graph resource) is shown as an "unavailable"
-placeholder, since loading it needs an authenticated request. Native `.one` and `.onepkg` files
-remain unsupported. The formats themselves are documented by
-Microsoft ([MS-ONESTORE] for the revision-store file, [MS-ONE] for the content
-schema; `.onepkg` is a CAB archive of `.one` files), so a read-only importer is
-feasible but out of scope here — use Microsoft 365 / the Graph OneNote API for
-live interoperability.
+placeholder, since loading it needs an authenticated request. Native `.one` and
+`.onepkg` files are **inspected but not parsed**: dropping a `.onepkg` reads its
+MS-CAB directory and lists the `.one` sections it contains (with sizes), a
+`.one` file is recognised by name, and either way the Import dialog explains
+that native binary parsing is unavailable and points at OneNote's own HTML/ZIP
+export or the Microsoft account connection. The formats themselves are
+documented by Microsoft ([MS-ONESTORE] for the revision-store file, [MS-ONE] for
+the content schema; `.onepkg` is a CAB archive of `.one` files), so a full
+read-only importer is feasible but out of scope here — use Microsoft 365 / the
+Graph OneNote API for live interoperability.
 
 [MS-ONESTORE]: https://learn.microsoft.com/openspecs/office_file_formats/ms-onestore/
 [MS-ONE]: https://learn.microsoft.com/openspecs/office_file_formats/ms-one/

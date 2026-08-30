@@ -453,16 +453,18 @@
             </div>
 
             <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                Seamlessly import notebooks, sections, or individual pages exported from Microsoft OneNote or backup files. Supported formats: <strong class="text-slate-700 dark:text-slate-200">OneNote Web JSON exports, OneNote HTML pages (.html, .htm), or zipped OneNote page packages (.zip)</strong>.
+                Seamlessly import notebooks, sections, or individual pages exported from Microsoft OneNote or backup files. Supported formats: <strong class="text-slate-700 dark:text-slate-200">OneNote Web JSON exports, OneNote HTML pages (.html, .htm), or zipped OneNote page packages (.zip)</strong>. Native <strong class="text-slate-700 dark:text-slate-200">.one / .onepkg</strong> files are inspected and inventoried, but not yet parsed &mdash; export them from OneNote as HTML/ZIP, or use the Microsoft account connection below.
             </p>
 
             <!-- Drop Zone File Input -->
             <div id="dropZone" onclick="document.getElementById('fileInput').click()" class="border-2 border-dashed border-purple-300 dark:border-purple-800 hover:border-onenote-500 bg-purple-50/50 dark:bg-purple-950/20 rounded-xl p-8 text-center cursor-pointer transition">
                 <i data-lucide="upload-cloud" class="w-10 h-10 text-onenote-600 dark:text-purple-400 mx-auto mb-2"></i>
                 <div class="text-sm font-semibold text-slate-700 dark:text-slate-200">Click to upload or drag & drop files here</div>
-                <div class="text-xs text-slate-400 mt-1">Accepts .json, .html, .htm, or exported .zip OneNote packages</div>
-                <input type="file" id="fileInput" onchange="handleFileImport(event)" accept=".json,.html,.htm,.zip" class="hidden" multiple>
+                <div class="text-xs text-slate-400 mt-1">Accepts .json, .html, .htm, .zip &mdash; and inspects .one / .onepkg</div>
+                <input type="file" id="fileInput" onchange="handleFileImport(event)" accept=".json,.html,.htm,.zip,.one,.onepkg" class="hidden" multiple>
             </div>
+
+            <div id="importNotice" class="hidden border-t border-slate-200 dark:border-slate-700 pt-4 text-xs text-slate-600 dark:text-slate-300 leading-relaxed space-y-2"></div>
 
             <div id="graphImportSection" class="hidden border-t border-slate-200 dark:border-slate-700 pt-4 space-y-3">
                 <div class="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
@@ -2095,6 +2097,11 @@
 
         function closeImportModal() {
             document.getElementById('importModal').classList.add('hidden');
+            const notice = document.getElementById('importNotice');
+            if (notice) {
+                notice.classList.add('hidden');
+                notice.innerHTML = '';
+            }
         }
 
         // --- Microsoft Graph OneNote: connect + import ----------------------
@@ -2313,22 +2320,145 @@
             const files = event.target.files;
             if (!files || files.length === 0) return;
 
+            let importedAny = false;
+            const notices = [];
+
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
                 const ext = file.name.split('.').pop().toLowerCase();
 
                 if (ext === 'json') {
                     await parseJsonImport(file);
+                    importedAny = true;
                 } else if (ext === 'html' || ext === 'htm') {
                     await parseHtmlImport(file);
+                    importedAny = true;
                 } else if (ext === 'zip') {
                     await parseZipImport(file);
+                    importedAny = true;
+                } else if (ext === 'one' || ext === 'onepkg') {
+                    const report = await parseOnePkgImport(file);
+                    if (report && report.message) notices.push(report.message);
                 }
             }
 
-            closeImportModal();
             renderApp();
-            showToast('OneNote data imported successfully!');
+
+            if (importedAny) showToast('OneNote data imported successfully!');
+            // A `.one` / `.onepkg` advisory needs to stay on screen (it explains a
+            // manual next step), so keep the modal open when there is one.
+            if (notices.length) showImportNotice(notices);
+            else closeImportModal();
+        }
+
+        // OneNote's native binary files. `.one` is a single [MS-ONESTORE]
+        // revision-store section; `.onepkg` is a Microsoft Cabinet (MS-CAB)
+        // archive bundling a notebook's `.one` files plus a table of contents.
+        // Full binary parsing (CAB -> [MS-ONESTORE] object space -> [MS-ONE]
+        // properties -> HTML) is PLAN.md Phase 5 and not done; this reads only
+        // the CAB directory so the user gets an honest inventory plus a pointer
+        // at the paths that do work — OneNote's own File > Export (HTML / page
+        // ZIP), or the Microsoft Graph connection in this dialog.
+
+        // 'MSCF', read big-endian from offset 0.
+        const CAB_SIGNATURE = 0x4d534346;
+
+        // Names in these cabinets (section GUIDs, "OneToc2") are ASCII, so a
+        // plain byte-wise decode is correct whether or not the UTF-8 name flag
+        // is set on the record.
+        function decodeCabName(bytes) {
+            let name = '';
+            for (let i = 0; i < bytes.length; i++) name += String.fromCharCode(bytes[i]);
+            return name;
+        }
+
+        // Enumerate the files in an MS-CAB cabinet's directory: CFHEADER gives
+        // `coffFiles` / `cFiles`, then walk the fixed 16-byte CFFILE records and
+        // their NUL-terminated names. No CFFOLDER / reserve-field parsing and no
+        // decompression — the directory is enough to inventory the archive.
+        function listCabinetFiles(buffer) {
+            if (!buffer || buffer.byteLength < 36) return null;
+            const view = new DataView(buffer);
+            if (view.getUint32(0, false) !== CAB_SIGNATURE) return null;
+            const coffFiles = view.getUint32(16, true);
+            const cFiles = view.getUint16(28, true);
+            const bytes = new Uint8Array(buffer);
+            const files = [];
+            let offset = coffFiles;
+            for (let i = 0; i < cFiles && offset + 16 <= bytes.length; i++) {
+                const size = view.getUint32(offset, true); // CFFILE.cbFile
+                let end = offset + 16;                      // CFFILE.szName
+                while (end < bytes.length && bytes[end] !== 0) end++;
+                files.push({ name: decodeCabName(bytes.subarray(offset + 16, end)), size });
+                offset = end + 1;
+            }
+            return files;
+        }
+
+        function readFileArrayBuffer(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = () => reject(reader.error || new Error('read failed'));
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        // Inspect a `.one` / `.onepkg` file and return a human-readable report.
+        // Never mutates state — native OneNote binaries are not imported yet.
+        async function parseOnePkgImport(file) {
+            const HOWTO =
+                'Native OneNote binary parsing ([MS-ONESTORE]/[MS-ONE]) is not supported yet. ' +
+                'To bring this content in, open the notebook in OneNote and use ' +
+                'File ▸ Export (HTML, or a per-page ZIP), or connect a Microsoft ' +
+                'account above to import it over Microsoft Graph.';
+
+            let buffer;
+            try {
+                buffer = await readFileArrayBuffer(file);
+            } catch (error) {
+                return { ok: false, name: file.name, oneFiles: [], message: `Could not read ${file.name}.` };
+            }
+
+            if (/\.onepkg$/i.test(file.name)) {
+                const entries = listCabinetFiles(buffer);
+                if (!entries) {
+                    return {
+                        ok: false, name: file.name, oneFiles: [],
+                        message: `${file.name} is not a readable OneNote package (no MSCF cabinet header). ${HOWTO}`,
+                    };
+                }
+                const ones = entries.filter(entry => /\.one$/i.test(entry.name));
+                const shown = (ones.length ? ones : entries).map(entry => `${entry.name} (${formatBytes(entry.size)})`);
+                const count = ones.length || entries.length;
+                const noun = (ones.length ? '.one section file' : 'contained file') + (count === 1 ? '' : 's');
+                const inventory = shown.length ? ` — ${shown.join(', ')}` : '';
+                return {
+                    ok: false, name: file.name, oneFiles: shown,
+                    message: `${file.name}: ${count} ${noun}${inventory}. ${HOWTO}`,
+                };
+            }
+
+            return {
+                ok: false, name: file.name, oneFiles: [],
+                message: `${file.name} is a native OneNote section file ([MS-ONESTORE]). ${HOWTO}`,
+            };
+        }
+
+        // Render one or more import advisories inside the Import modal. Unlike a
+        // toast these persist, since they usually spell out a manual next step
+        // (`.one` / `.onepkg` handling).
+        function showImportNotice(messages) {
+            const box = document.getElementById('importNotice');
+            if (!box) {
+                messages.forEach(showToast);
+                return;
+            }
+            box.innerHTML = messages.map(message =>
+                `<p class="flex gap-2"><i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5 text-amber-500"></i><span>${escapeHtml(message)}</span></p>`
+            ).join('');
+            box.classList.remove('hidden');
+            lucide.createIcons();
         }
 
         // Parser for OneNote JSON structure

@@ -162,7 +162,12 @@ as a "documented but complex binary format" rather than simply unsupported. An
 intermediate `.onepkg` CAB-extraction step that reports "N .one files found,
 native parsing not yet supported" would be honest.
 
-_Status: README updated with the [MS-ONESTORE]/[MS-ONE] pointers in Phase 0._
+_Status: README updated with the [MS-ONESTORE]/[MS-ONE] pointers in Phase 0.
+The honest intermediate landed in Phase 5 — `parseOnePkgImport()` reads the
+MS-CAB directory (`listCabinetFiles()`), inventories the contained `.one`
+sections with sizes, and surfaces a persistent Import-dialog notice pointing at
+the HTML/ZIP export and Microsoft Graph paths; bare `.one` files are recognised
+and reported the same way. The full binary parser is still out of scope._
 
 ## 8. Section colors
 
