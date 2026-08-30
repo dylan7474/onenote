@@ -5,9 +5,11 @@ browser and automatically persists the complete notebook state to the server.
 
 > [!IMPORTANT]
 > This is an independent project, not a Microsoft product. “OneNote” is a
-> Microsoft trademark. The application does **not** currently read native
-> `.one` files or connect to Microsoft 365/OneDrive. “Parity” below means a
-> similar user workflow, not file-format or service compatibility.
+> Microsoft trademark. The application does **not** parse the native `.one`
+> binary format (a dropped `.one`/`.onepkg` is inventoried, not read). It *can*
+> optionally connect to Microsoft 365 / a personal Microsoft account through the
+> Graph OneNote API when `GRAPH_CLIENT_ID` is configured. “Parity” below means a
+> similar user workflow, not native file-format compatibility.
 
 ## Run locally
 
@@ -151,7 +153,7 @@ rebuilding or replacing the application container does not delete saved notes.
 
 ## Feature status
 
-This inventory was checked against the implementation on **7 August 2026**.
+This inventory was checked against the implementation on **30 August 2026**.
 Microsoft offers several OneNote clients whose feature sets differ; the target
 for this comparison is the common modern OneNote experience rather than a
 specific legacy desktop release.
@@ -179,6 +181,15 @@ specific legacy desktop release.
 - JSON notebook export and per-page OneNote-compatible HTML export; JSON,
   HTML/HTM, and ZIP-of-HTML import, preserving supported OneNote subpage levels,
   outline geometry, `<meta>` timestamps, `data-tag` markup, and inlined images.
+- Optional live import/push against a Microsoft 365 or personal account via the
+  Graph OneNote API (needs `GRAPH_CLIENT_ID`): sign in from the Import dialog,
+  pull a whole notebook — sections, pages, subpage levels, `data-tag` markup,
+  and each page's embedded images and file attachments (fetched through the
+  signed-in proxy) — and send the open page back to a chosen section.
+- Dropped native `.one` / `.onepkg` files are **inspected, not parsed**: a
+  `.onepkg` is read as the MS-CAB archive it is and its contained `.one`
+  sections are listed with sizes; the Import dialog explains that binary parsing
+  is unavailable and points at the HTML/ZIP export or the Graph connection.
 - Debounced server-side JSON persistence with a versioned state schema:
   `migrateState()` upgrades older saved data on load, and the server refuses to
   overwrite the data file with a state stamped newer than it understands. Also a
@@ -199,10 +210,10 @@ implementation exists; **Missing** = no implementation yet.
 | Search | **Partial** | The “global” search currently filters only titles/tags in the active section. Add indexed full-text and OCR search across all notebooks, result snippets, scopes, filters, recent searches, and tag search. |
 | Ink and Draw | **Partial** | One bitmap pen layer exists. Add stroke/vector storage, eraser/lasso, selection/transform, highlighters, pressure/touch support, shapes, ruler, ink replay, and ink-to-shape/text/math. |
 | Insert content | **Partial** | File attachments can be added at the caret, persisted, and downloaded/launched; OneNote HTML attachment objects retain their body position on import. Add inline images, attachment printouts/previews, camera/scans, links, audio/video recordings, online video, date/time, equations/symbols, stickers, and reusable page templates. |
-| Capture and integrations | **Partial** | With `GRAPH_CLIENT_ID` set, sign in from the Import dialog to pull a Microsoft 365 / personal notebook and push individual pages back via the Graph OneNote API. Still missing: a web clipper/share target, email-to-note workflow, meeting details, and Outlook tasks. |
+| Capture and integrations | **Partial** | With `GRAPH_CLIENT_ID` set, sign in from the Import dialog to pull a Microsoft 365 / personal notebook — including each page's images and file attachments, fetched via an authenticated `/api/graph/resource` proxy — and push individual pages back via the Graph OneNote API. Still missing: a web clipper/share target, email-to-note workflow, meeting details, and Outlook tasks. |
 | Collaboration and sync | **Missing** | State is one server-wide JSON document. Add accounts, private notebooks, invitations/links, permissions, real-time coauthoring, presence, comments/@mentions, conflict handling, offline cache, and multi-device sync. |
 | History and recovery | **Missing** | The History menu is informational only. Add undo/redo across editing, autosaved revisions, page versions/diff/restore, author attribution, recent edits, deleted-notes recycle bin, and backup/restore. |
-| Import/export/print | **Partial** | Project JSON and HTML-based imports exist; “OneNote ZIP” means ZIP files containing HTML, not native OneNote packages. Add sanitized, asset-aware import; PDF/HTML/Markdown export; print/preview; and document native `.one`/`.onepkg` limitations clearly. |
+| Import/export/print | **Partial** | Project JSON and HTML-based imports exist; “OneNote ZIP” means ZIP files containing HTML, not native OneNote packages. Dropped `.one`/`.onepkg` files are inventoried with an in-app explanation of the limitation, and a live Graph import is asset-aware. Still to add: PDF/HTML/Markdown export and print/preview. |
 | Accessibility and language | **Partial** | Semantic controls are limited and no audit has been completed. Add complete keyboard navigation, focus management, screen-reader labels, contrast/reflow testing, accessibility checker, spell/grammar checking, translation, dictation, and Immersive Reader-style reading tools. |
 | Security and administration | **Missing** | Add authentication/authorization, encrypted transport guidance, password-protected sections, per-user storage, audit logs, retention, quotas, validated uploads, HTML sanitization, CSP, CSRF protection, and rate limiting. |
 | Cross-platform experience | **Partial** | It is browser-based but desktop-oriented. Add responsive/mobile layouts, touch gestures, installable PWA support, offline editing, and tested browser/device compatibility. |
@@ -223,8 +234,10 @@ security, or accessible interaction would not be a useful OneNote replacement.
   and UI modules; pin or self-host third-party browser dependencies.
 - [ ] Sanitize edited/imported HTML and attachments; add CSP, security headers,
   CSRF defenses, upload type/size checks, and safe filenames.
-- [ ] Correct UI claims: distinguish local HTML/JSON interchange from native
-  OneNote `.one`/`.onepkg` compatibility and label search by its actual scope.
+- [x] Correct UI claims: distinguish local HTML/JSON interchange from native
+  OneNote `.one`/`.onepkg` compatibility — a dropped `.one`/`.onepkg` is now
+  inventoried with an in-app notice that binary parsing is unavailable. _(Still
+  to do: label search by its actual scope.)_
 
 **Exit criteria:** repeatable tests protect all current features; old data
 migrates without loss; malformed or hostile imports cannot execute scripts.
@@ -271,8 +284,10 @@ devices, including disconnects and concurrent changes.
 - [ ] Add high-fidelity print/PDF plus HTML/Markdown export and asset-preserving
   round trips; investigate native OneNote conversion only through documented,
   legally supportable APIs or user-controlled desktop tooling.
-- [ ] Offer opt-in Microsoft Graph integration for Microsoft 365 notebooks,
-  respecting Graph permissions, throttling, supported content, and service terms.
+- [x] Offer opt-in Microsoft Graph integration for Microsoft 365 notebooks,
+  respecting Graph permissions, throttling, supported content, and service terms
+  — sign-in, notebook import (with images/attachments), and per-page push, all
+  gated by `GRAPH_CLIENT_ID`.
 - [ ] Complete WCAG-oriented keyboard, screen-reader, zoom/reflow, contrast,
   reduced-motion, touch, localization, and mobile/PWA test matrices.
 
