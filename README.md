@@ -151,6 +151,26 @@ opens the new page in OneNote on the web.
 The deployment stores application state in the `onenote-data` Docker volume, so
 rebuilding or replacing the application container does not delete saved notes.
 
+### Enabling Microsoft Graph on a deploy
+
+`deploy.sh` forwards any `GRAPH_*` variables it finds — in its own environment,
+or in a gitignored `.env` file next to the script — into the container. Copy
+[`.env.example`](./.env.example) to `.env` and fill in at least `GRAPH_CLIENT_ID`:
+
+```bash
+cp .env.example .env
+# edit .env: GRAPH_CLIENT_ID=..., optionally GRAPH_CLIENT_SECRET / GRAPH_TENANT /
+# GRAPH_REDIRECT_URI, then:
+./deploy.sh 3020
+```
+
+`GRAPH_CLIENT_ID` is what switches the feature on; without it the container runs
+exactly as before and needs no Microsoft account. If `GRAPH_REDIRECT_URI` is
+omitted it defaults to `http://localhost:<port>/api/graph/callback`. Whatever it
+resolves to must be listed as a redirect URI on the Entra app registration (see
+[Connect to Microsoft OneNote](#connect-to-microsoft-onenote-optional) above) —
+`deploy.sh` prints the effective value when it starts the container.
+
 ## Feature status
 
 This inventory was checked against the implementation on **30 August 2026**.
